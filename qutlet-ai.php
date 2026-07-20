@@ -48,7 +48,7 @@ add_action( 'plugins_loaded', __NAMESPACE__ . '\\bootstrap' );
 /**
  * Punkt wejścia wtyczki. Uruchamiany na `plugins_loaded`.
  *
- * FAZA 0 (bootstrap) = czysty szkielet: brak slice'ów, brak logiki AI, brak
+ * Bootstrap (P-7.0) = czysty szkielet: brak slice'ów, brak logiki AI, brak
  * rejestracji pól (D-7.G6 — pola ACF/CPT rejestruje wyłącznie qutlet-core).
  * Weryfikujemy tu wyłącznie OBECNOŚĆ twardej zależności i przy braku robimy
  * no-op + notice.
