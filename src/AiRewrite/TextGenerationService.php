@@ -45,7 +45,15 @@ final class TextGenerationService {
 		}
 
 		if ( null !== $model_preference ) {
-			$builder = $builder->using_model_preference( ...(array) $model_preference );
+			$preferences = (array) $model_preference;
+
+			// Pusta lista wywołałaby `using_model_preference()` bez argumentów, co SDK
+			// zgłasza jako InvalidArgumentException — builder złapałby ten wyjątek jako
+			// WP_Error, ale poniższy feature-detection zwróciłby zamiast niego mylący,
+			// generyczny komunikat „unsupported". Pusta lista == brak preferencji.
+			if ( array() !== $preferences ) {
+				$builder = $builder->using_model_preference( ...$preferences );
+			}
 		}
 
 		if ( ! $builder->is_supported_for_text_generation() ) {
