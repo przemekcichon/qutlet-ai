@@ -11,3 +11,8 @@ parameters:
         - src/
     excludePaths:
         - vendor/
+    # Core AI Client (WP 7.0) — `php-stubs/wordpress-stubs` jeszcze go nie zna
+    # (przypięty do ^6.6.2 przez szepeviktor/phpstan-wordpress). Patrz komentarz
+    # w stubs/wp-ai-client.stub.php (P-7.1).
+    scanFiles:
+        - stubs/wp-ai-client.stub.php
