@@ -29,8 +29,10 @@ use WP_Post;
  * `<form method="post">` — CELOWO nie GET-linkami: „Generuj" woła płatne
  * wywołanie zewnętrznego dostawcy AI, a link (goły `href`) dałby się odpalić
  * przypadkiem — spekulatywnym prefetch/prerender przeglądarki albo web-shieldem
- * antywirusa skanującym linki na stronie (na tej maszynie akurat obserwowany —
- * patrz `CLAUDE.md`, sekcja o Avaście). POST wymaga faktycznego submitu
+ * antywirusa skanującym linki na stronie (środek ostrożności, NIE obserwowany
+ * fakt — `CLAUDE.md` dokumentuje na tej maszynie inne zachowania Avasta:
+ * kwarantannę śledzonych plików repo i blokowanie certów HTTPS composerowi,
+ * nie skanowanie linków w adminie WP). POST wymaga faktycznego submitu
  * formularza, którego żaden z tych mechanizmów nie robi.
  *
  * Formularze NIE mogą jednak żyć wewnątrz metaboxa: ten renderuje się wewnątrz
@@ -453,7 +455,15 @@ final class GenerationMetaBox {
 
 	/**
 	 * Renderuje jeden niewidoczny formularz akcji (nonce związany z produktem —
-	 * wzorzec `OAuthController::render_disconnect_form()`).
+	 * wzorzec `Qutlet\Allegro\Auth\ConnectionsPage::render_disconnect_form()`).
+	 *
+	 * `wp_nonce_field()` dostaje jawną nazwę pola (`self::nonce_field_name()`),
+	 * NIE domyślną `_wpnonce` — trzy formularze w stopce renderują się obok
+	 * siebie na tej samej stronie, a strona MA JUŻ własne `#_wpnonce` z głównego
+	 * `<form id="post">` WP; bez tego trzy kolejne pola o tym samym `id` byłyby
+	 * duplikatem (nieprawidłowy HTML, nawet jeśli dziś nieszkodliwy, bo jedyny
+	 * konsument, `wp-admin/js/post.js`, i tak trafia we WŁAŚCIWE — pierwsze w
+	 * DOM — pole WP).
 	 *
 	 * @param int    $product_id ID produktu.
 	 * @param string $action     Nazwa akcji `admin-post`.
@@ -467,8 +477,20 @@ final class GenerationMetaBox {
 		);
 		printf( '<input type="hidden" name="action" value="%s">', esc_attr( $action ) );
 		printf( '<input type="hidden" name="product_id" value="%d">', $product_id );
-		wp_nonce_field( self::nonce_action( $action, $product_id ) );
+		wp_nonce_field( self::nonce_action( $action, $product_id ), self::nonce_field_name( $action ) );
 		echo '</form>';
+	}
+
+	/**
+	 * Nazwa pola nonce (`$name` w `wp_nonce_field()`/`$query_arg` w
+	 * `check_admin_referer()`) — jedna na akcję, żeby uniknąć duplikatu `id`
+	 * (patrz docblock {@see self::render_footer_form()}).
+	 *
+	 * @param string $action Nazwa akcji `admin-post`.
+	 * @return string
+	 */
+	private static function nonce_field_name( string $action ): string {
+		return '_wpnonce_' . $action;
 	}
 
 	/**
@@ -517,7 +539,7 @@ final class GenerationMetaBox {
 			wp_die( esc_html__( 'Brak uprawnień do tej akcji na tym produkcie.', 'qutlet-ai' ), '', array( 'response' => 403 ) );
 		}
 
-		check_admin_referer( self::nonce_action( $action, $product_id ) );
+		check_admin_referer( self::nonce_action( $action, $product_id ), self::nonce_field_name( $action ) );
 
 		return $product_id;
 	}
