@@ -24,8 +24,12 @@ use WP_Post;
  * `qutlet-ai` na swoim ekranie.
  *
  * Flow celowo BEZ JS/AJAX — w całym projekcie akcje admina zmieniające stan idą
- * przez `admin-post.php` + `wp_nonce_field`/`check_admin_referer` (wzorzec 1:1
- * z `Qutlet\Allegro\Auth\OAuthController`), więc trzymamy się tego samego stylu:
+ * przez `admin-post.php` + nonce/`check_admin_referer` (wzorzec z
+ * `Qutlet\Allegro\Auth\OAuthController`). Tu akcje są linkami GET (nie
+ * formularzami POST) — metabox żyje wewnątrz jednego wielkiego `<form id="post">`
+ * WordPressa na ekranie edycji produktu, więc zagnieżdżony `<form>` zostałby
+ * spłaszczony przez przeglądarkę do formularza zewnętrznego (patrz docblock
+ * {@see self::render_action_link()} — to realny bug, nie hipoteza):
  *
  * 1. „Generuj" woła {@see RewriteGenerator::generate()} i odkłada wynik jako
  *    PODGLĄD w krótkotrwałym transiencie (`qutlet_ai_pending_{id}`) — NIE
@@ -148,7 +152,7 @@ final class GenerationMetaBox {
 		if ( ! $has_raw ) {
 			esc_html_e( 'Brak warstwy surowej — produkt nie pochodzi z Allegro (utworzony ręcznie) albo nie był jeszcze zsynchronizowany. Nie ma z czego wygenerować przeróbki.', 'qutlet-ai' );
 		} else {
-			self::render_action_form(
+			self::render_action_link(
 				$product_id,
 				self::GENERATE_ACTION,
 				__( 'Generuj', 'qutlet-ai' ),
@@ -317,9 +321,9 @@ final class GenerationMetaBox {
 		self::render_pairs_list( $pending['specyfikacja'], esc_html__( 'Model zwrócił pustą specyfikację.', 'qutlet-ai' ) );
 
 		echo '<p>';
-		self::render_action_form( $product_id, self::ACCEPT_ACTION, __( 'Zaakceptuj', 'qutlet-ai' ), 'button-primary' );
+		self::render_action_link( $product_id, self::ACCEPT_ACTION, __( 'Zaakceptuj', 'qutlet-ai' ), 'button-primary' );
 		echo ' ';
-		self::render_action_form( $product_id, self::DISCARD_ACTION, __( 'Odrzuć', 'qutlet-ai' ), 'button' );
+		self::render_action_link( $product_id, self::DISCARD_ACTION, __( 'Odrzuć', 'qutlet-ai' ), 'button' );
 		echo '</p>';
 		echo '</div>';
 	}
@@ -376,22 +380,46 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Renderuje formularz POST jednego przycisku akcji (`admin-post.php` + nonce
-	 * związany z produktem — wzorzec `OAuthController::render_disconnect_form()`).
+	 * Renderuje link akcji (GET, `admin-post.php` + nonce związany z produktem —
+	 * wzorzec `OAuthController::connect_url()`).
+	 *
+	 * CELOWO link (`<a>`), NIE `<form method="post">`: ten render trafia do
+	 * wnętrza metaboxa na ekranie edycji produktu, który sam jest zagnieżdżony w
+	 * jednym wielkim `<form id="post" action="post.php">` WordPressa. Zagnieżdżony
+	 * `<form>` jest nieprawidłowym HTML-em — przeglądarka spłaszcza go do formularza
+	 * zewnętrznego, a nasze ukryte pole `name="action"` nadpisuje pole WP
+	 * `action=editpost`; `post.php` dostaje wtedy nierozpoznaną akcję i
+	 * przekierowuje na `edit.php` (listę postów) zamiast wołać nasz handler —
+	 * dokładnie tak to wyglądało, zanim to poprawiono. `admin-post.php` obsługuje
+	 * GET tak samo jak POST (`$_REQUEST['action']`), a `check_admin_referer()`
+	 * czyta nonce z `$_REQUEST` — link jest więc równie bezpieczny i omija problem
+	 * zagnieżdżenia w całości. `OAuthController::connect_url()` używa tego samego
+	 * wzorca (choć tam z innego powodu — Rozłącz na tamtej stronie jest formularzem,
+	 * bo strona NIE jest zagnieżdżona w żadnym innym `<form>`).
 	 *
 	 * @param int    $product_id ID produktu.
 	 * @param string $action     Nazwa akcji `admin-post`.
-	 * @param string $label      Etykieta przycisku.
-	 * @param string $css_class  Klasa CSS przycisku (`button`/`button-primary`).
+	 * @param string $label      Etykieta linku.
+	 * @param string $css_class  Klasa CSS (`button`/`button-primary`).
 	 * @return void
 	 */
-	private static function render_action_form( int $product_id, string $action, string $label, string $css_class ): void {
-		printf( '<form method="post" action="%s" style="display:inline-block">', esc_url( admin_url( 'admin-post.php' ) ) );
-		printf( '<input type="hidden" name="action" value="%s">', esc_attr( $action ) );
-		printf( '<input type="hidden" name="product_id" value="%d">', $product_id );
-		wp_nonce_field( self::nonce_action( $action, $product_id ) );
-		printf( '<button type="submit" class="button %1$s">%2$s</button>', esc_attr( $css_class ), esc_html( $label ) );
-		echo '</form>';
+	private static function render_action_link( int $product_id, string $action, string $label, string $css_class ): void {
+		$url = add_query_arg(
+			array(
+				'action'     => $action,
+				'product_id' => $product_id,
+			),
+			admin_url( 'admin-post.php' )
+		);
+
+		$url = wp_nonce_url( $url, self::nonce_action( $action, $product_id ) );
+
+		printf(
+			'<a href="%1$s" class="button %2$s">%3$s</a>',
+			esc_url( $url ),
+			esc_attr( $css_class ),
+			esc_html( $label )
+		);
 	}
 
 	/**
@@ -414,12 +442,15 @@ final class GenerationMetaBox {
 	 * nonce związany z (akcja, produkt). Kończy żądanie (`wp_die`), gdy
 	 * nieautoryzowane.
 	 *
+	 * Czyta `product_id` z `$_GET` — akcje idą przez linki, NIE formularze (patrz
+	 * docblock {@see self::render_action_link()}).
+	 *
 	 * @param string $action Nazwa akcji `admin-post` (do zbudowania nazwy nonce'a).
 	 * @return int ID produktu (zawsze > 0, gdy funkcja wraca).
 	 */
 	private static function authorized_product_id( string $action ): int {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce weryfikowany niżej (check_admin_referer), po walidacji ID.
-		$product_id = isset( $_POST['product_id'] ) ? absint( wp_unslash( $_POST['product_id'] ) ) : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- nonce weryfikowany niżej (check_admin_referer), po walidacji ID.
+		$product_id = isset( $_GET['product_id'] ) ? absint( wp_unslash( $_GET['product_id'] ) ) : 0;
 
 		if ( $product_id <= 0 || ! current_user_can( self::CAPABILITY, $product_id ) ) {
 			wp_die( esc_html__( 'Brak uprawnień do tej akcji na tym produkcie.', 'qutlet-ai' ), '', array( 'response' => 403 ) );
