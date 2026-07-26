@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Harness testów jednostkowych qutlet-ai (pierwszy w tym repo, P-7.3).
+
+    Testy są BEZ SIECI i BEZ WordPressa: pokrywają czystą funkcję
+    `RewriteGenerator::decode_response()` (dekodowanie/walidacja kształtu
+    odpowiedzi AI), która celowo nie woła żadnej funkcji WP. Bootstrap to sam
+    autoloader Composera — wzorzec 1:1 z `qutlet-core/phpunit.xml`. Gdy późniejszy
+    punkt wprowadzi test wymagający WP, dostanie osobny testsuite z własnym
+    bootstrapem (wzorzec z qutlet-allegro).
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         beStrictAboutOutputDuringTests="true"
+         cacheResult="false">
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>
