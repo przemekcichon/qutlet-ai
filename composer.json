@@ -7,7 +7,9 @@
         "php": ">=7.4"
     },
     "require-dev": {
+        "php-stubs/woocommerce-stubs": "^10.9",
         "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^9.6",
         "szepeviktor/phpstan-wordpress": "^2.0"
     },
     "autoload": {
@@ -15,10 +17,16 @@
             "Qutlet\\Ai\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Qutlet\\Ai\\Tests\\": "tests/"
+        }
+    },
     "config": {
         "sort-packages": true
     },
     "scripts": {
-        "phpstan": "phpstan analyse"
+        "phpstan": "phpstan analyse",
+        "test": "phpunit"
     }
 }

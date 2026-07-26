@@ -14,5 +14,16 @@ parameters:
     # Core AI Client (WP 7.0) — `php-stubs/wordpress-stubs` jeszcze go nie zna
     # (przypięty do ^6.6.2 przez szepeviktor/phpstan-wordpress). Patrz komentarz
     # w stubs/wp-ai-client.stub.php (P-7.1).
+    # Stuby WooCommerce — twarda zależność (D-G5), konsumowana od P-7.3
+    # (RewriteWriter/GenerationMetaBox: wc_get_product(), WC_Product,
+    # WC_Product_Attribute).
     scanFiles:
         - stubs/wp-ai-client.stub.php
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    # Źródła qutlet-core (twarda zależność, D-G5) — RewriteGenerator/GenerationMetaBox
+    # czytają stałe warstwy surowej (RawLayerMeta, P-7.3). Wzorzec 1:1 z
+    # qutlet-allegro/phpstan.neon: ścieżka względna zakłada instalację WP
+    # (pluginy-siostry w wp-content/plugins); analiza poza instalacją wymaga
+    # obecności qutlet-core obok (jak vendor/ — lokalna materializacja środowiska).
+    scanDirectories:
+        - ../qutlet-core/src
