@@ -63,19 +63,22 @@ function bootstrap(): void {
 	}
 
 	/*
-	 * TODO (kolejne fazy): tu wpinamy inicjalizację slice'ów AI (AiRewrite/ …)
-	 * ładowanych z przestrzeni Qutlet\Ai.
-	 *
 	 * UWAGA o kolejności (D-G5): WP ładuje wtyczki alfabetycznie, więc
 	 * `qutlet-ai` startuje jako PIERWSZY z rodziny Qutlet — przed allegro i
 	 * przed core. Sprawdzenie OBECNOŚCI core poniżej jest bezpieczne (stała
 	 * `Qutlet\Core\VERSION` powstaje przy ładowaniu pliku core, zanim odpali
 	 * jakikolwiek `plugins_loaded`), ale KOLEJNOŚCI callbacków nie gwarantuje.
-	 * Realny init slice'ów — które czytają pola/serwisy zarejestrowane przez
-	 * core (np. pole „prompt per-produkt" z P-7.2a) — musi wpiąć się na
-	 * PÓŹNIEJSZYM priorytecie niż core (core hakuje `plugins_loaded` z domyślnym
-	 * 10, więc ai np. priorytet > 10) lub na dedykowanym hooku „core gotowe".
+	 * Slice'y poniżej wpinają hooki PÓŹNIEJSZE niż `plugins_loaded`
+	 * (`admin_menu`/`admin_init`) i nie czytają nic zarejestrowanego przez core
+	 * na `plugins_loaded`, więc kolejność callbacków między ai a core nie jest
+	 * tu krytyczna.
 	 */
+
+	// AiRewrite (P-7.2b): strona ustawień globalnego promptu AI (opcja
+	// `qutlet_ai_prompt_global`). Efektywny prompt (override per-produkt z
+	// P-7.2a ?? ta opcja) czyta `PromptSettings::effective_prompt()` — wołane
+	// dopiero przez generację (P-7.3), nie z bootstrapu.
+	AiRewrite\PromptSettingsPage::init();
 }
 
 /**
