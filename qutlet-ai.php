@@ -86,18 +86,23 @@ function bootstrap(): void {
 }
 
 /**
- * Sprawdza obecność twardej zależności AI (D-G5): Qutlet Core.
+ * Sprawdza obecność twardych zależności AI (D-G5): Qutlet Core + WooCommerce.
  *
- * Zależność ai to WYŁĄCZNIE core (nie WooCommerce — Woo jest zależnością core,
- * nie ai). Weryfikujemy OBECNOŚĆ na `plugins_loaded` (kolejność callbacków to
- * osobna sprawa — patrz TODO w `bootstrap()`). Literał wykrycia sprawdzony w
- * realnym kodzie: Qutlet Core definiuje stałą `Qutlet\Core\VERSION` (w
- * `qutlet-core.php`, na poziomie pliku). Test to literał-string — nie wymaga stubów.
+ * Do P-7.2b zależność ai była WYŁĄCZNIE core (Woo była zależnością core, nie
+ * ai — czytana tylko pośrednio). Od P-7.3 `AiRewrite\RewriteWriter`/
+ * `GenerationMetaBox` wołają funkcje/klasy WooCommerce BEZPOŚREDNIO
+ * (`wc_get_product()`, `WC_Product_Attribute`), więc guard dopisuje
+ * `class_exists('WooCommerce')` — wzorzec 1:1 z `qutlet-allegro`
+ * (`dependencies_met()` tam sprawdza to samo z tego samego powodu). Weryfikujemy
+ * OBECNOŚĆ na `plugins_loaded` (kolejność callbacków to osobna sprawa — patrz
+ * TODO w `bootstrap()`). Literał wykrycia core sprawdzony w realnym kodzie:
+ * Qutlet Core definiuje stałą `Qutlet\Core\VERSION` (w `qutlet-core.php`, na
+ * poziomie pliku). Test to literały — nie wymaga stubów.
  *
- * @return bool True, gdy Qutlet Core jest obecny.
+ * @return bool True, gdy Qutlet Core i WooCommerce są obecne.
  */
 function dependencies_met(): bool {
-	return defined( 'Qutlet\\Core\\VERSION' );
+	return defined( 'Qutlet\\Core\\VERSION' ) && class_exists( 'WooCommerce' );
 }
 
 /**

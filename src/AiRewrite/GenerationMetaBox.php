@@ -202,7 +202,20 @@ final class GenerationMetaBox {
 			self::redirect_to_edit_screen( $product_id );
 		}
 
-		RewriteWriter::accept( $product_id, $pending['opis'], $pending['specyfikacja'] );
+		$saved = RewriteWriter::accept( $product_id, $pending['opis'], $pending['specyfikacja'] );
+
+		if ( ! $saved ) {
+			// Produkt zniknął między „Generuj" a „Zaakceptuj" (np. usunięty) —
+			// podgląd zostaje w transiencie (TTL i tak go w końcu wygasi), NIE
+			// pokazujemy fałszywego sukcesu.
+			self::set_notice(
+				$product_id,
+				'error',
+				__( 'Zapis nie powiódł się — produkt nie istnieje albo nie jest produktem WooCommerce.', 'qutlet-ai' )
+			);
+			self::redirect_to_edit_screen( $product_id );
+		}
+
 		delete_transient( self::pending_key( $product_id ) );
 
 		self::set_notice(

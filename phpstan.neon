@@ -16,10 +16,13 @@ parameters:
     # w stubs/wp-ai-client.stub.php (P-7.1).
     # Stuby WooCommerce — twarda zależność (D-G5), konsumowana od P-7.3
     # (RewriteWriter/GenerationMetaBox: wc_get_product(), WC_Product,
-    # WC_Product_Attribute).
+    # WC_Product_Attribute). Stuby ACF Pro — `update_field()` w `RewriteWriter`
+    # (zapis `opis` z referencją pola, nie goły `update_post_meta()` — patrz
+    # docblock klasy).
     scanFiles:
         - stubs/wp-ai-client.stub.php
         - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        - vendor/php-stubs/acf-pro-stubs/acf-pro-stubs.php
     # Źródła qutlet-core (twarda zależność, D-G5) — RewriteGenerator/GenerationMetaBox
     # czytają stałe warstwy surowej (RawLayerMeta, P-7.3). Wzorzec 1:1 z
     # qutlet-allegro/phpstan.neon: ścieżka względna zakłada instalację WP
