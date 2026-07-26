@@ -76,9 +76,13 @@ function bootstrap(): void {
 
 	// AiRewrite (P-7.2b): strona ustawień globalnego promptu AI (opcja
 	// `qutlet_ai_prompt_global`). Efektywny prompt (override per-produkt z
-	// P-7.2a ?? ta opcja) czyta `PromptSettings::effective_prompt()` — wołane
-	// dopiero przez generację (P-7.3), nie z bootstrapu.
+	// P-7.2a ?? ta opcja) czyta `PromptSettings::effective_prompt()` — wołany
+	// przez generację (P-7.3) poniżej.
 	AiRewrite\PromptSettingsPage::init();
+
+	// AiRewrite (P-7.3): metabox generacji (generuj/podgląd/zaakceptuj) na
+	// edycji produktu + orkiestracja surowe→AI→przerobione.
+	AiRewrite\GenerationMetaBox::init();
 }
 
 /**
