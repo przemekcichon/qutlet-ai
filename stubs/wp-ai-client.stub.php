@@ -7,7 +7,7 @@
  * ładowany w runtime (WordPress dostarcza te symbole naprawdę); służy WYŁĄCZNIE
  * do analizy statycznej — dopięty przez `scanFiles` w `phpstan.neon`.
  *
- * Sygnatury skopiowane 1:1 z realnego WP 7.0.2 (zweryfikowane w P-7.1):
+ * Sygnatury skopiowane 1:1 z realnego WP 7.0.2 (zweryfikowane w P-7.1/P-7.3):
  * `wp-includes/ai-client.php` i
  * `wp-includes/ai-client/class-wp-ai-client-prompt-builder.php`. Ograniczone do
  * metod faktycznie używanych w `TextGenerationService` (D-7.G3 — cienki serwis,
@@ -21,6 +21,7 @@
 /**
  * @method self using_system_instruction(string $systemInstruction) Sets the system instruction.
  * @method self using_model_preference(...$preferredModels) Sets preferred models to evaluate in order.
+ * @method self as_json_response(?array $schema = null) Configures the prompt for JSON response output (P-7.3 — structured specyfikacja).
  * @method bool is_supported_for_text_generation() Checks if the prompt is supported for text generation.
  * @method string|WP_Error generate_text() Generates text from the prompt.
  */
