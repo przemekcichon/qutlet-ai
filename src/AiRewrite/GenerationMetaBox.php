@@ -130,6 +130,19 @@ final class GenerationMetaBox {
 	/**
 	 * Rejestruje metabox tylko dla ekranu edycji produktu.
 	 *
+	 * Priorytet `high` (P-13.3b) — TEN SAM co natywny „Product data" WooCommerce
+	 * (`WC_Admin_Meta_Boxes::add_meta_boxes()`, hook `add_meta_boxes` priorytet 30).
+	 * WP nie ma priorytetu WYŻEJ niż `high`; w obrębie jednego priorytetu kolejność
+	 * renderu to kolejność DOPISANIA do `$wp_meta_boxes` (`do_meta_boxes()` w
+	 * rdzeniu, `foreach` po tablicy asocjacyjnej) — czyli kolejność wykonania
+	 * callbacków hooka `add_meta_boxes`. `self::init()` wpina `register()` na tym
+	 * samym hooku z priorytetem DOMYŚLNYM (10) — NIŻSZYM niż 30 WooCommerce —
+	 * więc nasz `add_meta_box()` wykonuje się first, ląduje w `high` PRZED
+	 * `woocommerce-product-data`, i renderuje się nad nim (bezpośrednio pod
+	 * natywnym edytorem treści). Bez wymuszania kolejności przez
+	 * `remove_meta_box()`+`add_meta_box()` — mniej inwazyjne, brak ryzyka
+	 * konfliktu z przyszłym repozycjonowaniem Product Data przez WooCommerce.
+	 *
 	 * @param string $post_type Typ posta bieżącego ekranu edycji.
 	 * @return void
 	 */
@@ -144,7 +157,7 @@ final class GenerationMetaBox {
 			array( self::class, 'render' ),
 			self::SCREEN,
 			'normal',
-			'default'
+			'high'
 		);
 	}
 
@@ -165,7 +178,7 @@ final class GenerationMetaBox {
 
 		echo '<div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">';
 		self::render_raw_column( $product_id );
-		self::render_current_column( $product_id );
+		self::render_current_column( $post );
 		self::render_pending_column( $product_id );
 		echo '</div>';
 
@@ -291,15 +304,15 @@ final class GenerationMetaBox {
 
 	/**
 	 * Kolumna „Przerobione (bieżące)" — to, co dziś widać na stronie produktu:
-	 * pole `opis` i atrybuty WC niebędące taksonomią (custom, per-produkt —
-	 * te, które zapisuje {@see RewriteWriter}).
+	 * natywny opis (`post_content`, P-13.3a/b) i atrybuty WC niebędące taksonomią
+	 * (custom, per-produkt — te, które zapisuje {@see RewriteWriter}).
 	 *
-	 * @param int $product_id ID produktu.
+	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
 	 */
-	private static function render_current_column( int $product_id ): void {
-		$opis    = (string) get_post_meta( $product_id, RewriteWriter::FIELD_OPIS, true );
-		$product = wc_get_product( $product_id );
+	private static function render_current_column( WP_Post $post ): void {
+		$opis    = (string) $post->post_content;
+		$product = wc_get_product( $post->ID );
 
 		$pairs = array();
 

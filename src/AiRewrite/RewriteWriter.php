@@ -13,36 +13,19 @@ use WC_Product_Attribute;
 
 /**
  * Zapisuje ZAAKCEPTOWANY podgląd {@see RewriteGenerator::generate()} do realnych
- * pól warstwy przerobionej (kontrakt §9.2): `opis` (ACF WYSIWYG, rejestruje
- * `qutlet-core`, `RewrittenFields`) + natywne atrybuty produktu WooCommerce
- * (specyfikacja). `qutlet-ai` NIE rejestruje żadnego z tych pól (D-7.G6) — tylko
- * pisze do literału zgodnego z kontraktem.
+ * pól warstwy przerobionej (kontrakt §9.2): natywny opis produktu (`post_content`,
+ * P-13.3a/b — `opis` ACF wycofane, `qutlet-core`, `RewrittenFields`) + natywne
+ * atrybuty produktu WooCommerce (specyfikacja). `qutlet-ai` NIE rejestruje żadnego
+ * z tych pól (D-7.G6) — tylko pisze do literału zgodnego z kontraktem.
  *
  * Warstwa przerobiona pozostaje ręcznie edytowalna po zapisie — ten writer to
  * jedyne miejsce, które ją tworzy/nadpisuje z inicjatywy AI; sync z Allegro
  * (FAZA 6) jej nigdy nie dotyka (D-5.G4).
  *
- * Zapis `opis` przez `update_field()` (klucz ACF), NIE `update_post_meta()` —
- * wzorzec 1:1 z `Qutlet\Allegro\OfferSync\ProductWriter` (kontrakt §9.2/vertical
- * slice): `update_field()` po kluczu zapisuje wartość ORAZ referencję pola
- * (meta `_opis`), bez której ACF traktuje pole jak „dummy" (`get_field()`
- * pomija formatowanie WYSIWYG — `wpautop`/`acf_the_content` — dopóki ktoś nie
- * zapisze posta ręcznie w adminie i referencja się nie dopisze).
+ * Zapis opisu przez `wp_update_post()` (`post_content`), NIE ACF `update_field()`
+ * jak przed P-13.3b — natywne pole WP nie ma referencji pola do utrzymania.
  */
 final class RewriteWriter {
-
-	/**
-	 * `meta_key` opisu (przerobiona warstwa) — kontrakt §9.2 (VERBATIM), do
-	 * odczytu przez inne slice'y (`GenerationMetaBox::render_current_column()`).
-	 */
-	public const FIELD_OPIS = 'opis';
-
-	/**
-	 * Klucz ACF pola `opis` (VERBATIM z `Qutlet\Core\ProductInfo\RewrittenFields`,
-	 * `field_qutlet_opis`) — wymagany przez `update_field()`, żeby zapis dopisał
-	 * referencję pola (patrz docblock klasy).
-	 */
-	private const ACF_KEY_OPIS = 'field_qutlet_opis';
 
 	/**
 	 * Zapisuje opis i specyfikację zaakceptowane przez admina.
@@ -61,9 +44,18 @@ final class RewriteWriter {
 
 		// Opis: ten sam allowlist co treść postów (spójnie z podglądem surowego
 		// opisu w `RawLayerMetaBox`) — AI generuje prozę, nie potrzebuje skryptów
-		// ani atrybutów `on*`. `update_field()` (nie `update_post_meta()`) —
-		// patrz docblock klasy.
-		update_field( self::ACF_KEY_OPIS, wp_kses_post( $opis ), $product_id );
+		// ani atrybutów `on*`.
+		$updated = wp_update_post(
+			array(
+				'ID'           => $product_id,
+				'post_content' => wp_kses_post( $opis ),
+			),
+			true
+		);
+
+		if ( is_wp_error( $updated ) ) {
+			return false;
+		}
 
 		$product->set_attributes( self::build_attributes( $specyfikacja ) );
 		$product->save();
