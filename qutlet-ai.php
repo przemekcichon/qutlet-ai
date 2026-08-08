@@ -27,6 +27,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 const VERSION = '0.1.0';
 
+/**
+ * Ścieżka głównego pliku wtyczki — jedno źródło prawdy dla `plugins_url()`/
+ * `plugin_dir_path()` (P-13.2c: enqueue JS generatora tytułu).
+ */
+const PLUGIN_FILE = __FILE__;
+
 /*
  * Autoloader Composera (D-G1): ładowany z guardem. Brak `vendor/autoload.php`
  * NIE jest fatal errorem — pokazujemy notice w adminie i przerywamy bootstrap,
@@ -83,6 +89,11 @@ function bootstrap(): void {
 	// AiRewrite (P-7.3): metabox generacji (generuj/podgląd/zaakceptuj) na
 	// edycji produktu + orkiestracja surowe→AI→przerobione.
 	AiRewrite\GenerationMetaBox::init();
+
+	// AiRewrite (P-13.2c): metabox generatora tytułu/podnazwy (AJAX, zapis
+	// bezpośredni) + Reset do oryginalnej nazwy Allegro — D-13.G2 (świadomie
+	// AJAX, inny mechanizm niż generator opisu powyżej).
+	AiRewrite\TitleGenerationMetaBox::init();
 }
 
 /**
