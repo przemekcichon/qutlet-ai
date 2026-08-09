@@ -14,26 +14,18 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Charakteryzuje dekodowanie/walidację kształtu odpowiedzi AI (JSON wymuszony
- * przez `as_json_response()`) BEZ WordPressa — sanityzacja WP-owa (HTML,
- * `sanitize_text_field`) należy do zapisu ({@see \Qutlet\Ai\AiRewrite\RewriteWriter}),
- * nie do tej funkcji.
+ * przez `as_json_response()`) BEZ WordPressa — sanityzacja WP-owa (HTML) należy
+ * do zapisu ({@see \Qutlet\Ai\AiRewrite\RewriteWriter}), nie do tej funkcji.
+ *
+ * Od P-13.4b (D-13.G1) odpowiedź niesie WYŁĄCZNIE `opis` — `specyfikacja` USUNIĘTA
+ * ze schematu (atrybuty WC tłumaczy odtąd 1:1 sync Allegro, nie AI).
  */
 final class RewriteGeneratorTest extends TestCase {
 
 	public function test_decodes_well_formed_response(): void {
 		$json = wp_json_encode_stub(
 			array(
-				'opis'         => '<p>Świetny produkt</p>',
-				'specyfikacja' => array(
-					array(
-						'etykieta' => 'Marka',
-						'wartosc'  => 'Soundcore',
-					),
-					array(
-						'etykieta' => 'Kolor',
-						'wartosc'  => 'Czarny',
-					),
-				),
+				'opis' => '<p>Świetny produkt</p>',
 			)
 		);
 
@@ -41,74 +33,31 @@ final class RewriteGeneratorTest extends TestCase {
 
 		$this->assertSame(
 			array(
-				'opis'         => '<p>Świetny produkt</p>',
-				'specyfikacja' => array(
-					array(
-						'etykieta' => 'Marka',
-						'wartosc'  => 'Soundcore',
-					),
-					array(
-						'etykieta' => 'Kolor',
-						'wartosc'  => 'Czarny',
-					),
-				),
+				'opis' => '<p>Świetny produkt</p>',
 			),
 			$result
 		);
 	}
 
-	public function test_accepts_empty_specification_list(): void {
-		$json = wp_json_encode_stub(
-			array(
-				'opis'         => 'Opis bez parametrów.',
-				'specyfikacja' => array(),
-			)
-		);
+	public function test_decodes_empty_opis(): void {
+		$json = wp_json_encode_stub( array( 'opis' => '' ) );
 
 		$result = RewriteGenerator::decode_response( $json );
 
-		$this->assertSame(
-			array(
-				'opis'         => 'Opis bez parametrów.',
-				'specyfikacja' => array(),
-			),
-			$result
-		);
+		$this->assertSame( array( 'opis' => '' ), $result );
 	}
 
-	public function test_skips_malformed_specification_rows_but_keeps_valid_ones(): void {
+	public function test_ignores_unexpected_extra_keys(): void {
 		$json = wp_json_encode_stub(
 			array(
 				'opis'         => 'Opis',
-				'specyfikacja' => array(
-					array(
-						'etykieta' => 'OK',
-						'wartosc'  => 'Wartość',
-					),
-					array( 'etykieta' => 'Brak wartości' ),
-					array(
-						'etykieta' => 123,
-						'wartosc'  => 'Etykieta nie jest stringiem',
-					),
-					'nie-tablica',
-				),
+				'specyfikacja' => array( array( 'etykieta' => 'Marka', 'wartosc' => 'Soundcore' ) ),
 			)
 		);
 
 		$result = RewriteGenerator::decode_response( $json );
 
-		$this->assertSame(
-			array(
-				'opis'         => 'Opis',
-				'specyfikacja' => array(
-					array(
-						'etykieta' => 'OK',
-						'wartosc'  => 'Wartość',
-					),
-				),
-			),
-			$result
-		);
+		$this->assertSame( array( 'opis' => 'Opis' ), $result, 'Zbędne klucze w odpowiedzi (np. stary "specyfikacja") są ignorowane, nie odrzucają całej odpowiedzi.' );
 	}
 
 	public function test_rejects_invalid_json(): void {
@@ -116,35 +65,13 @@ final class RewriteGeneratorTest extends TestCase {
 	}
 
 	public function test_rejects_missing_opis_key(): void {
-		$json = wp_json_encode_stub( array( 'specyfikacja' => array() ) );
-
-		$this->assertNull( RewriteGenerator::decode_response( $json ) );
-	}
-
-	public function test_rejects_missing_specyfikacja_key(): void {
-		$json = wp_json_encode_stub( array( 'opis' => 'Opis' ) );
+		$json = wp_json_encode_stub( array() );
 
 		$this->assertNull( RewriteGenerator::decode_response( $json ) );
 	}
 
 	public function test_rejects_non_string_opis(): void {
-		$json = wp_json_encode_stub(
-			array(
-				'opis'         => array( 'nie string' ),
-				'specyfikacja' => array(),
-			)
-		);
-
-		$this->assertNull( RewriteGenerator::decode_response( $json ) );
-	}
-
-	public function test_rejects_non_array_specyfikacja(): void {
-		$json = wp_json_encode_stub(
-			array(
-				'opis'         => 'Opis',
-				'specyfikacja' => 'nie tablica',
-			)
-		);
+		$json = wp_json_encode_stub( array( 'opis' => array( 'nie string' ) ) );
 
 		$this->assertNull( RewriteGenerator::decode_response( $json ) );
 	}

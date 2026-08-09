@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace Qutlet\Ai\AiRewrite;
 
 use Qutlet\Core\ProductInfo\RawLayerMeta;
-use WC_Product_Attribute;
 use WP_Post;
 
 /**
@@ -241,7 +240,7 @@ final class GenerationMetaBox {
 			self::redirect_to_edit_screen( $product_id );
 		}
 
-		$saved = RewriteWriter::accept( $product_id, $pending['opis'], $pending['specyfikacja'] );
+		$saved = RewriteWriter::accept( $product_id, $pending['opis'] );
 
 		if ( ! $saved ) {
 			// Produkt zniknął między „Generuj" a „Zaakceptuj" (np. usunięty) —
@@ -260,7 +259,7 @@ final class GenerationMetaBox {
 		self::set_notice(
 			$product_id,
 			'success',
-			__( 'Przeróbka zaakceptowana i zapisana (opis + specyfikacja).', 'qutlet-ai' )
+			__( 'Przeróbka zaakceptowana i zapisana (opis).', 'qutlet-ai' )
 		);
 		self::redirect_to_edit_screen( $product_id );
 	}
@@ -282,7 +281,10 @@ final class GenerationMetaBox {
 	/**
 	 * Kolumna „Surowe" — opis prozą i specyfikacja z warstwy surowej (Allegro).
 	 * Pełny JSON oferty pokazuje osobno `RawLayerMetaBox` (core, P-5.3) — tu tylko
-	 * te dwa pola, bo to one wchodzą do porównania z wygenerowaną przeróbką.
+	 * te dwa pola: opis wchodzi do porównania z wygenerowaną przeróbką (kolumny
+	 * niżej), specyfikacja zostaje jako kontekst wejścia AI (ten sam surowy JSON
+	 * karmi generację opisu) mimo że od P-13.4b/D-13.G1 nie ma już z czym jej
+	 * porównać — atrybuty WC tłumaczy 1:1 sync Allegro, nie ten flow.
 	 *
 	 * @param int $product_id ID produktu.
 	 * @return void
@@ -304,35 +306,20 @@ final class GenerationMetaBox {
 
 	/**
 	 * Kolumna „Przerobione (bieżące)" — to, co dziś widać na stronie produktu:
-	 * natywny opis (`post_content`, P-13.3a/b) i atrybuty WC niebędące taksonomią
-	 * (custom, per-produkt — te, które zapisuje {@see RewriteWriter}).
+	 * natywny opis (`post_content`, P-13.3a/b). Do P-13.4b pokazywała tu też
+	 * atrybuty WC (specyfikacja) — USUNIĘTE (D-13.G1): atrybuty nie są już
+	 * częścią tego flow (pisze je sync Allegro, nie AI, P-13.4a), więc nie ma
+	 * ich z czym tu porównywać.
 	 *
 	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
 	 */
 	private static function render_current_column( WP_Post $post ): void {
-		$opis    = (string) $post->post_content;
-		$product = wc_get_product( $post->ID );
-
-		$pairs = array();
-
-		if ( false !== $product ) {
-			foreach ( $product->get_attributes() as $attribute ) {
-				if ( ! $attribute instanceof WC_Product_Attribute || $attribute->is_taxonomy() ) {
-					continue; // Taksonomia (np. marka) — poza zakresem tego zestawienia.
-				}
-
-				$pairs[] = array(
-					'etykieta' => $attribute->get_name(),
-					'wartosc'  => implode( ', ', $attribute->get_options() ),
-				);
-			}
-		}
+		$opis = (string) $post->post_content;
 
 		echo '<div style="flex:1;min-width:18em">';
 		printf( '<h4>%s</h4>', esc_html__( 'Przerobione (bieżące, na stronie)', 'qutlet-ai' ) );
 		self::render_html_preview( $opis, esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) );
-		self::render_pairs_list( $pairs, esc_html__( 'Brak atrybutów produktu.', 'qutlet-ai' ) );
 		echo '</div>';
 	}
 
@@ -353,7 +340,6 @@ final class GenerationMetaBox {
 		echo '<div style="flex:1;min-width:18em;background:#f6f7f7;padding:.75em;border:1px solid #dcdcde">';
 		printf( '<h4>%s</h4>', esc_html__( 'Wygenerowane (podgląd — jeszcze nie zapisane)', 'qutlet-ai' ) );
 		self::render_html_preview( $pending['opis'], esc_html__( 'Model zwrócił pusty opis.', 'qutlet-ai' ) );
-		self::render_pairs_list( $pending['specyfikacja'], esc_html__( 'Model zwrócił pustą specyfikację.', 'qutlet-ai' ) );
 
 		echo '<p>';
 		self::render_action_button( $product_id, self::ACCEPT_ACTION, __( 'Zaakceptuj', 'qutlet-ai' ), 'button-primary' );
@@ -386,9 +372,10 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Renderuje listę par etykieta→wartość (surowa specyfikacja, atrybuty WC albo
-	 * podgląd wygenerowanej specyfikacji) jako prostą listę definicyjną. Puste →
-	 * nota o braku.
+	 * Renderuje listę par etykieta→wartość jako prostą listę definicyjną. Puste →
+	 * nota o braku. Jedyny dziś konsument to {@see self::render_raw_column()}
+	 * (surowa specyfikacja Allegro) — od P-13.4b/D-13.G1 atrybuty WC nie są już
+	 * generowane przez AI, więc nie ma ich (ani ich podglądu) tu do wyrenderowania.
 	 *
 	 * @param array<int, array{etykieta?: mixed, wartosc?: mixed}> $pairs      Lista par.
 	 * @param string                                               $empty_note Nota wyświetlana, gdy lista jest pusta (już `esc_html`).
@@ -524,13 +511,12 @@ final class GenerationMetaBox {
 	 *
 	 * @param mixed $pending Wartość z `get_transient()`.
 	 * @return bool
-	 * @phpstan-assert-if-true array{opis: string, specyfikacja: array<int, array{etykieta: string, wartosc: string}>} $pending
+	 * @phpstan-assert-if-true array{opis: string} $pending
 	 */
 	private static function is_pending_shape( $pending ): bool {
 		return is_array( $pending )
-			&& isset( $pending['opis'], $pending['specyfikacja'] )
-			&& is_string( $pending['opis'] )
-			&& is_array( $pending['specyfikacja'] );
+			&& isset( $pending['opis'] )
+			&& is_string( $pending['opis'] );
 	}
 
 	/**
