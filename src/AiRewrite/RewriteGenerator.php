@@ -12,18 +12,21 @@ namespace Qutlet\Ai\AiRewrite;
 use Qutlet\Core\ProductInfo\RawLayerMeta;
 
 /**
- * Generuje PODGLĄD warstwy przerobionej (opis + specyfikacja) z warstwy surowej
- * jednego produktu (D-7.G5/D-5.G4): wejściem jest cała verbatim oferta Allegro
+ * Generuje PODGLĄD warstwy przerobionej (opis) z warstwy surowej jednego
+ * produktu (D-7.G5/D-5.G4): wejściem jest cała verbatim oferta Allegro
  * (`RawLayerMeta::META_OFFER`) — daje modelowi komplet parametrów tej kategorii,
  * nigdy cały katalog. Wynik NIE jest tu zapisywany do realnych pól — to robi
  * dopiero {@see RewriteWriter::accept()} po akceptacji admina (D-7.3.1: zwykła
  * akcja admina generuj/podgląd/zaakceptuj, nie Ability).
  *
+ * Do P-13.4 (D-13.G1, REWIZJA D-5.1.1/D-5.1.2) generator zwracał też
+ * `specyfikacja` — pole USUNIĘTE z odpowiedzi: atrybuty WC są odtąd
+ * tłumaczone 1:1 z surowych parametrów Allegro przez sync
+ * ({@see \Qutlet\Allegro\OfferSync\ProductWriter}, P-13.4a), bez udziału AI.
+ *
  * Odpowiedź AI wymuszamy jako JSON (`TextGenerationService::generate_json()`,
- * `as_json_response()`) zamiast wyłuskiwać opis+specyfikację z wolnej prozy —
- * plan (P-7.3) explicite sugeruje ustrukturyzowane wyjście dla specyfikacji;
- * łączymy oba pola w jeden schemat, żeby uniknąć dwóch wywołań AI za jeden
- * produkt.
+ * `as_json_response()`) zamiast wyłuskiwać opis z wolnej prozy niedeterministyczną
+ * heurystyką.
  */
 final class RewriteGenerator {
 
@@ -31,7 +34,7 @@ final class RewriteGenerator {
 	 * Generuje podgląd przeróbki dla produktu.
 	 *
 	 * @param int $product_id ID produktu (post ID).
-	 * @return array{opis: string, specyfikacja: array<int, array{etykieta: string, wartosc: string}>}|\WP_Error
+	 * @return array{opis: string}|\WP_Error
 	 */
 	public static function generate( int $product_id ) {
 		$raw_offer = get_post_meta( $product_id, RawLayerMeta::META_OFFER, true );
@@ -59,7 +62,7 @@ final class RewriteGenerator {
 		if ( null === $parsed ) {
 			return new \WP_Error(
 				'qutlet_ai_malformed_response',
-				__( 'Odpowiedź AI nie odpowiada oczekiwanemu kształtowi (pola „opis" i „specyfikacja").', 'qutlet-ai' ),
+				__( 'Odpowiedź AI nie odpowiada oczekiwanemu kształtowi (pole „opis").', 'qutlet-ai' ),
 				array( 'status' => 502 )
 			);
 		}
@@ -69,51 +72,32 @@ final class RewriteGenerator {
 
 	/**
 	 * Dekoduje i waliduje kształt odpowiedzi JSON od AI — czysta funkcja (bez
-	 * WordPressa), pokryta testami. Sanityzacja WP-owa (HTML w opisie,
-	 * `sanitize_text_field` w parach specyfikacji) należy do momentu ZAPISU
-	 * ({@see RewriteWriter::accept()}), nie podglądu — podgląd pokazuje wynik
-	 * możliwie wiernie temu, co zwrócił model.
+	 * WordPressa), pokryta testami. Sanityzacja WP-owa (HTML w opisie) należy
+	 * do momentu ZAPISU ({@see RewriteWriter::accept()}), nie podglądu —
+	 * podgląd pokazuje wynik możliwie wiernie temu, co zwrócił model.
 	 *
 	 * @param string $json Surowa odpowiedź AI (JSON — wymuszony `as_json_response()`).
-	 * @return array{opis: string, specyfikacja: array<int, array{etykieta: string, wartosc: string}>}|null Null, gdy kształt się nie zgadza.
+	 * @return array{opis: string}|null Null, gdy kształt się nie zgadza.
 	 */
 	public static function decode_response( string $json ): ?array {
 		$decoded = json_decode( $json, true );
 
 		if ( ! is_array( $decoded )
-			|| ! isset( $decoded['opis'], $decoded['specyfikacja'] )
-			|| ! is_string( $decoded['opis'] )
-			|| ! is_array( $decoded['specyfikacja'] ) ) {
+			|| ! isset( $decoded['opis'] )
+			|| ! is_string( $decoded['opis'] ) ) {
 			return null;
 		}
 
-		$specification = array();
-
-		foreach ( $decoded['specyfikacja'] as $row ) {
-			if ( ! is_array( $row )
-				|| ! isset( $row['etykieta'], $row['wartosc'] )
-				|| ! is_string( $row['etykieta'] )
-				|| ! is_string( $row['wartosc'] ) ) {
-				continue;
-			}
-
-			$specification[] = array(
-				'etykieta' => $row['etykieta'],
-				'wartosc'  => $row['wartosc'],
-			);
-		}
-
 		return array(
-			'opis'         => $decoded['opis'],
-			'specyfikacja' => $specification,
+			'opis' => $decoded['opis'],
 		);
 	}
 
 	/**
-	 * Schemat JSON oczekiwanej odpowiedzi (`as_json_response()`): prosty opis
-	 * (proza) + lista par etykieta→wartość — ten sam kształt co warstwa surowa
-	 * (§9.1 `_qutlet_allegro_specification_raw`), więc podgląd/porównanie obok
-	 * siebie (P-7.3) renderuje oba tym samym helperem.
+	 * Schemat JSON oczekiwanej odpowiedzi (`as_json_response()`): wyłącznie opis
+	 * (proza) — pole `specyfikacja` USUNIĘTE (P-13.4b, D-13.G1): atrybuty WC
+	 * odtąd tłumaczy 1:1 z surowych parametrów sync Allegro
+	 * ({@see \Qutlet\Allegro\OfferSync\ProductWriter}, P-13.4a), nie AI.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -121,20 +105,9 @@ final class RewriteGenerator {
 		return array(
 			'type'       => 'object',
 			'properties' => array(
-				'opis'         => array( 'type' => 'string' ),
-				'specyfikacja' => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'       => 'object',
-						'properties' => array(
-							'etykieta' => array( 'type' => 'string' ),
-							'wartosc'  => array( 'type' => 'string' ),
-						),
-						'required'   => array( 'etykieta', 'wartosc' ),
-					),
-				),
+				'opis' => array( 'type' => 'string' ),
 			),
-			'required'   => array( 'opis', 'specyfikacja' ),
+			'required'   => array( 'opis' ),
 		);
 	}
 }

@@ -14,7 +14,7 @@ use Qutlet\Core\ProductInfo\RawLayerMeta;
 /**
  * Generuje PRZERÓBKĘ nazwy produktu: oczyszczony tytuł + (opcjonalnie) podnazwa,
  * z oryginalnej nazwy Allegro (`RawLayerMeta::META_NAME_RAW`). Instrukcja
- * systemowa jest OSOBNA od {@see RewriteGenerator} (opis+specyfikacja) — zadanie
+ * systemowa jest OSOBNA od {@see RewriteGenerator} (opis) — zadanie
  * jest algorytmiczne (te same reguły za każdym razem: kapitaliki, fragmenty
  * niezwiązane z produktem, próg długości), nie stylistyczne jak ton opisu, więc
  * świadomie NIE korzysta z {@see PromptSettings} (globalny prompt/override per
