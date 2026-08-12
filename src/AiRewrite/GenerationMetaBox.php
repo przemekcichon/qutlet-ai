@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Qutlet\Ai\AiRewrite;
 
+use Qutlet\Core\AiRewrite\PromptOverrideField;
 use Qutlet\Core\ProductInfo\RawLayerMeta;
 use WP_Post;
 
@@ -60,6 +61,11 @@ use WP_Post;
  * (adres nie był z góry znany jako „ten sam ekran"); tu cel przekierowania to
  * zawsze ten sam, znany z góry ekran edycji TEGO produktu, więc nie ma powodu
  * kodować stanu w URL-u.
+ *
+ * Prompt AI (P-13.6b, D-13.G4): metabox zyskał też sekcję promptu (przed
+ * przyciskiem „Generuj") — nadpisanie per produkt ({@see PromptOverrideField::render_field()},
+ * pole `prompt_ai` rejestrowane przez `qutlet-core`) obok READ-ONLY podglądu
+ * promptu globalnego ({@see self::render_global_prompt_preview()}).
  */
 final class GenerationMetaBox {
 
@@ -180,6 +186,8 @@ final class GenerationMetaBox {
 		self::render_current_column( $post );
 		self::render_pending_column( $product_id );
 		echo '</div>';
+
+		self::render_prompt_section( $product_id );
 
 		echo '<p style="margin-top:1em">';
 
@@ -321,6 +329,52 @@ final class GenerationMetaBox {
 		printf( '<h4>%s</h4>', esc_html__( 'Przerobione (bieżące, na stronie)', 'qutlet-ai' ) );
 		self::render_html_preview( $opis, esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) );
 		echo '</div>';
+	}
+
+	/**
+	 * Sekcja promptu AI (P-13.6b, D-13.G4): edytowalne nadpisanie per produkt
+	 * (pole `prompt_ai`, rejestruje `qutlet-core` — renderuje przez
+	 * {@see PromptOverrideField::render_field()}, bo `qutlet-ai` nie ma twardej
+	 * zależności na ACF Pro) obok READ-ONLY podglądu promptu globalnego —
+	 * kurator widzi oba na raz przed „Generuj", bez przeskakiwania na stronę
+	 * ustawień.
+	 *
+	 * @param int $product_id ID produktu.
+	 * @return void
+	 */
+	private static function render_prompt_section( int $product_id ): void {
+		echo '<div style="margin-top:1em;padding-top:1em;border-top:1px solid #dcdcde">';
+
+		PromptOverrideField::render_field( $product_id );
+		self::render_global_prompt_preview();
+
+		echo '</div>';
+	}
+
+	/**
+	 * Podgląd promptu globalnego (`PromptSettings::OPTION_NAME`) — READ-ONLY, sam
+	 * odczyt `get_option()` (P-13.6b), bez linku edycji: strona ustawień
+	 * (`PromptSettingsPage`, pod menu WooCommerce) jest osobnym, wystarczającym
+	 * sposobem na edycję — nie duplikujemy tu formularza.
+	 *
+	 * @return void
+	 */
+	private static function render_global_prompt_preview(): void {
+		$global = get_option( PromptSettings::OPTION_NAME, '' );
+		$global = is_string( $global ) ? $global : '';
+
+		printf( '<h4>%s</h4>', esc_html__( 'Prompt globalny (podgląd, tylko do odczytu)', 'qutlet-ai' ) );
+
+		if ( '' === trim( $global ) ) {
+			printf( '<p><em>%s</em></p>', esc_html__( 'Brak ustawionego promptu globalnego.', 'qutlet-ai' ) );
+
+			return;
+		}
+
+		printf(
+			'<div style="max-height:10em;overflow:auto;padding:.5em;border:1px solid #dcdcde;background:#f6f7f7;white-space:pre-wrap;word-break:break-word">%s</div>',
+			esc_html( $global )
+		);
 	}
 
 	/**
