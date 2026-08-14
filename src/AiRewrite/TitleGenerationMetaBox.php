@@ -125,7 +125,7 @@ final class TitleGenerationMetaBox {
 
 		$source_raw = (string) get_post_meta( $post->ID, TitleWriter::SOURCE_RAW_META, true );
 
-		if ( self::is_stale( $raw_name, $source_raw ) ) {
+		if ( self::is_stale( $raw_name, $source_raw, $post->post_title ) ) {
 			printf(
 				'<p data-qutlet-ai-title-stale style="background:#fcf0f1;border-left:4px solid #d63638;padding:8px 12px;margin:0 0 12px"><strong>%1$s</strong> %2$s</p>',
 				esc_html__( 'Nowy', 'qutlet-ai' ),
@@ -319,15 +319,27 @@ final class TitleGenerationMetaBox {
 	 * generacji/resetu (`TitleWriter::SOURCE_RAW_META`) — czysta funkcja, bez WP,
 	 * pokryta testami.
 	 *
-	 * `$source_raw` puste = nic jeszcze nie wygenerowano/zresetowano dla tego
-	 * produktu (świeżo utworzony, `post_title` = nazwa Allegro z ProductWriter,
-	 * P-9.1a.1) — NIE stale, bo tytuł i tak wciąż jest surową nazwą.
+	 * `$source_raw` puste = nic JESZCZE nie wygenerowano/zresetowano dla tego
+	 * produktu przez TEN metabox — NIE znaczy „nic się nie zdezaktualizowało"
+	 * (recenzja P-9.1a.2, sesja 2026-08-14): produkt mógł zostać utworzony dawno,
+	 * a nazwa oferty na Allegro zmienić się od tamtej pory, mimo że nikt nigdy
+	 * nie otworzył tego metaboxa. Fallback na tę gałąź: porównanie z bieżącym
+	 * `$current_title` (`post_title`) — od P-9.1a.1 sync ustawia `post_title`
+	 * WYŁĄCZNIE przy tworzeniu produktu (`qutlet-allegro::ProductWriter`), więc
+	 * dopóki nikt nic nie wygenerował/zresetował, `post_title` wciąż jest tą
+	 * samą surową nazwą, jaką miała oferta w chwili utworzenia — rozjazd z
+	 * bieżącą `$current_raw` oznacza, że oferta zmieniła się PO utworzeniu.
 	 *
-	 * @param string $current_raw Bieżąca `RawLayerMeta::META_NAME_RAW`.
-	 * @param string $source_raw  Stempel `TitleWriter::SOURCE_RAW_META` (może być pusty).
+	 * @param string $current_raw  Bieżąca `RawLayerMeta::META_NAME_RAW`.
+	 * @param string $source_raw   Stempel `TitleWriter::SOURCE_RAW_META` (może być pusty).
+	 * @param string $current_title Bieżący `post_title` produktu.
 	 * @return bool
 	 */
-	private static function is_stale( string $current_raw, string $source_raw ): bool {
-		return '' !== $source_raw && $source_raw !== $current_raw;
+	private static function is_stale( string $current_raw, string $source_raw, string $current_title ): bool {
+		if ( '' !== $source_raw ) {
+			return $source_raw !== $current_raw;
+		}
+
+		return $current_title !== $current_raw;
 	}
 }

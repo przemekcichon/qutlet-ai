@@ -40,6 +40,16 @@ badge „Nowy”, gdy sync (`qutlet-allegro`, `ProductWriter`) zaktualizował
 warstwę surową PO ostatniej generacji/resecie — sygnał dla kuratora, że
 oferta zmieniła się na Allegro i warto zweryfikować tytuł.
 
+Dla produktu, którego NIKT jeszcze nie dotknął przez ten metabox (stempel
+pusty), `is_stale()` używa fallbacku: porównuje `post_title` z bieżącą
+warstwą surową zamiast pustego stempla (poprawka po niezależnej recenzji,
+sesja 2026-08-14 — pusty stempel nie może znaczyć „nic się nie zmieniło",
+bo mógłby ukrywać dokładnie ten sam problem, który P-9.1a miało wystawić na
+widok). Działa dzięki P-9.1a.1 (qutlet-allegro): sync ustawia `post_title`
+WYŁĄCZNIE przy tworzeniu produktu, więc dopóki nikt nic nie wygenerował,
+`post_title` to wciąż nazwa Allegro z chwili utworzenia — rozjazd z bieżącą
+warstwą surową jednoznacznie znaczy „oferta zmieniła się od tamtej pory".
+
 Przyszły mechanizm notyfikacji mógłby subskrybować się w drugą stronę —
 wysyłać powiadomienie, gdy sync wykryje rozjazd (nie gdy `accept()` go
 ROZWIĄZUJE, co robi ten hook) — to inny punkt zaczepienia, prawdopodobnie w
