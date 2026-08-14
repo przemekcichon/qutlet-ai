@@ -23,6 +23,15 @@ use Qutlet\Core\ProductInfo\RawLayerMeta;
  * — ten sam powód co {@see RewriteWriter}: bez referencji pola ACF traktuje
  * wartość jak „dummy" (niepewne odczyty `get_field()`), dopóki ktoś nie zapisze
  * posta ręcznie w adminie.
+ *
+ * P-9.1a.2 (D-9.1a.1): przy KAŻDYM zapisie stempluje {@see self::SOURCE_RAW_META}
+ * bieżącą wartością {@see RawLayerMeta::META_NAME_RAW} — „z jakiej nazwy Allegro
+ * powstał ten tytuł/podnazwa". {@see TitleGenerationMetaBox::render()} porównuje
+ * ten stempel z aktualną warstwą surową i pokazuje flagę „Nowy", gdy się rozjadą
+ * (sync ProductWriter — qutlet-allegro — zmienia tylko warstwę surową po
+ * utworzeniu produktu, P-9.1a.1, nigdy sam `post_title`). Meta plugin-owned
+ * (bookkeeping `qutlet-ai`, nie warstwa surowa core) — bez `register_post_meta()`,
+ * jak `ImageSideloader::META_SOURCE_URL` w `qutlet-allegro`.
  */
 final class TitleWriter {
 
@@ -31,6 +40,22 @@ final class TitleWriter {
 	 * `field_qutlet_podnazwa`) — wymagany przez `update_field()`.
 	 */
 	private const ACF_KEY_PODNAZWA = 'field_qutlet_podnazwa';
+
+	/**
+	 * `meta_key` stempla „z jakiej nazwy Allegro powstał bieżący tytuł/podnazwa"
+	 * (P-9.1a.2) — patrz docblock klasy.
+	 */
+	public const SOURCE_RAW_META = '_qutlet_ai_title_source_raw';
+
+	/**
+	 * Hook odpalany po KAŻDYM udanym zapisie tytułu/podnazwy (generacja AI ORAZ
+	 * reset — obie ścieżki wołają {@see self::accept()}), P-9.1a.2. Rezerwacja pod
+	 * przyszły mechanizm notyfikacji (świadomie NIEZAIMPLEMENTOWANY teraz) — patrz
+	 * `docs/title-generated-hook.md`.
+	 *
+	 * `do_action( self::ACTION_TITLE_GENERATED, int $product_id, string $tytul, string $podnazwa )`
+	 */
+	public const ACTION_TITLE_GENERATED = 'qutlet_product_title_generated';
 
 	/**
 	 * Zapisuje tytuł i podnazwę (generacja AI albo reset — patrz docblock klasy).
@@ -69,6 +94,12 @@ final class TitleWriter {
 		}
 
 		update_field( self::ACF_KEY_PODNAZWA, $clean_subtitle, $product_id );
+
+		$raw_name = (string) get_post_meta( $product_id, RawLayerMeta::META_NAME_RAW, true );
+
+		update_post_meta( $product_id, self::SOURCE_RAW_META, wp_slash( $raw_name ) );
+
+		do_action( self::ACTION_TITLE_GENERATED, $product_id, $clean_title, $clean_subtitle );
 
 		return array(
 			'tytul'    => $clean_title,
