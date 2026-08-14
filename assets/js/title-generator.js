@@ -90,6 +90,15 @@
 		if ( 'string' === typeof data.podnazwa ) {
 			setSubtitleField( data.podnazwa );
 		}
+
+		// P-9.1a.2: udany zapis stempluje TitleWriter::SOURCE_RAW_META na bieżącej
+		// nazwie Allegro, więc flaga „Nowy" przestaje być aktualna — usuń ją bez
+		// przeładowania strony (spójne z resztą tego skryptu).
+		var stale = document.querySelector( '[data-qutlet-ai-title-stale]' );
+
+		if ( stale ) {
+			stale.remove();
+		}
 	}
 
 	function setSubtitleField( value ) {
