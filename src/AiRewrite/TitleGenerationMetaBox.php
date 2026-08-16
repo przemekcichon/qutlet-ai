@@ -17,14 +17,15 @@ use WP_Post;
  * Allegro (verbatim — jedyne miejsce w adminie, gdzie jest dziś widoczna, patrz
  * niżej) i dwa przyciski, „Generuj" i „Reset", oba wołające AJAX.
  *
- * Świadoma niekonsystencja z {@see GenerationMetaBox} (opis, `admin-post.php`,
- * podgląd w transiencie + osobna akcja „Zaakceptuj") — D-13.G2. Tu: `wp_ajax_*`
- * + zapis BEZPOŚREDNI (bez transientu/etapu akceptacji — decyzja użytkownika,
- * sesja realizująca P-13.2c: AJAX bez przeładowania daje szybki „undo" przez
- * „Reset", więc osobny krok akceptacji byłby zbędny). Zabezpieczenie zastępcze
- * za brak `admin-post.php` (który chronił przed przypadkowym/prefetchowanym
- * wywołaniem): `window.confirm()` w JS PRZED wysłaniem żądania — patrz
- * `assets/js/title-generator.js` — plus nonce + capability w handlerze.
+ * Świadoma niekonsystencja z {@see GenerationMetaBox} (opis) — D-13.G2. Obie
+ * klasy są dziś `wp_ajax_*` (P-17.1 przeniosło też opis na AJAX) — różnica NIE
+ * jest już w transporcie, tylko w modelu bezpieczeństwa: tu zapis BEZPOŚREDNI
+ * (bez transientu/etapu akceptacji — decyzja użytkownika, sesja realizująca
+ * P-13.2c: AJAX bez przeładowania daje szybki „undo" przez „Reset", więc
+ * osobny krok akceptacji byłby zbędny), tam trójstopniowy podgląd→akceptuj/
+ * odrzuć. Zabezpieczenie zastępcze za brak kroku akceptacji: `window.confirm()`
+ * w JS PRZED wysłaniem żądania — patrz `assets/js/title-generator.js` — plus
+ * nonce + capability w handlerze.
  *
  * Domyka też lukę zasygnalizowaną przy P-5.3 (`RawLayerMetaBox`, `qutlet-core`):
  * ten panel powstał PRZED P-13.2 i nie pokazuje nazwy — `RawLayerMeta::META_NAME_RAW`

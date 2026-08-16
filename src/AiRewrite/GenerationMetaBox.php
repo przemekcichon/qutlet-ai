@@ -23,30 +23,21 @@ use WP_Post;
  * D-5.G3: bare raw field pokazuje core, zestawienie porównawcze pokazuje
  * `qutlet-ai` na swoim ekranie.
  *
- * Flow celowo BEZ JS/AJAX — w całym projekcie akcje admina zmieniające stan idą
- * przez `admin-post.php` + `wp_nonce_field`/`check_admin_referer` (wzorzec z
- * `Qutlet\Allegro\Auth\OAuthController`), a same akcje są prawdziwymi
- * `<form method="post">` — CELOWO nie GET-linkami: „Generuj" woła płatne
- * wywołanie zewnętrznego dostawcy AI, a link (goły `href`) dałby się odpalić
- * przypadkiem — spekulatywnym prefetch/prerender przeglądarki albo web-shieldem
- * antywirusa skanującym linki na stronie (środek ostrożności, NIE obserwowany
- * fakt — `CLAUDE.md` dokumentuje na tej maszynie inne zachowania Avasta:
- * kwarantannę śledzonych plików repo i blokowanie certów HTTPS composerowi,
- * nie skanowanie linków w adminie WP). POST wymaga faktycznego submitu
- * formularza, którego żaden z tych mechanizmów nie robi.
+ * Flow to `wp_ajax_*` (P-17.1, D-17.2) — WZOREM {@see TitleGenerationMetaBox}
+ * (P-13.2c): przyciski w metaboksie są zwykłymi `<button type="button">` z JS
+ * (`assets/js/rewrite-generator.js`) wołającym `admin-ajax.php` przez `fetch()`,
+ * bez przeładowania strony. Do P-17.1 flow szedł przez `admin-post.php` +
+ * prawdziwe `<form method="post">` (zagnieżdżenie w głównym `<form id="post">`
+ * WP wymagało trzech niewidocznych formularzy w stopce, `admin_footer-post.php`)
+ * — USUNIĘTE wraz z konwersją, AJAX nie potrzebuje żadnego `<form>`.
  *
- * Formularze NIE mogą jednak żyć wewnątrz metaboxa: ten renderuje się wewnątrz
- * jednego wielkiego `<form id="post" action="post.php">` WordPressa na ekranie
- * edycji produktu, a zagnieżdżony `<form>` jest nieprawidłowym HTML-em —
- * przeglądarka spłaszcza go do formularza zewnętrznego, nasze ukryte pole
- * `name="action"` nadpisuje pole WP `action=editpost`, `post.php` dostaje
- * nierozpoznaną akcję i przekierowuje na `edit.php` (listę postów) zamiast
- * wołać nasz handler — dokładnie tak to wyglądało, zanim to poprawiono (to
- * realny bug, nie hipoteza). Rozwiązanie: trzy niewidoczne `<form>` renderują
- * się PO ZAMKNIĘCIU formularza WP, na hooku `admin_footer-post.php`
- * ({@see self::render_footer_forms()}) — a przyciski w metaboksie to zwykłe
- * `<button type="submit" form="…">`, wiążące się z formularzem przez HTML5
- * atrybut `form` (bez potrzeby zagnieżdżania ani JS-a).
+ * Trójstopniowość (generuj→podgląd→akceptuj/odrzuć) ZOSTAJE (D-17.2, D-13.G2
+ * aktualne co do KROKU) — to ona jest tu zabezpieczeniem zamiast
+ * `window.confirm()` z {@see TitleGenerationMetaBox}: „Generuj" nie zapisuje
+ * nic nieodwracalnego (tylko podgląd w transiencie), więc przypadkowe
+ * kliknięcie kosztuje najwyżej jedno zbędne (płatne) wywołanie dostawcy AI, nie
+ * utratę danych — stąd brak potwierdzenia w JS, w przeciwieństwie do generatora
+ * tytułu (zapis BEZPOŚREDNI, bez podglądu).
  *
  * 1. „Generuj" woła {@see RewriteGenerator::generate()} i odkłada wynik jako
  *    PODGLĄD w krótkotrwałym transiencie (`qutlet_ai_pending_{id}`) — NIE
@@ -56,11 +47,10 @@ use WP_Post;
  * 3. „Zaakceptuj" woła {@see RewriteWriter::accept()} (zapis realny) i czyści
  *    podgląd; „Odrzuć" tylko czyści podgląd bez zapisu.
  *
- * Komunikat po akcji: transient per produkt+użytkownik, NIE query string jak w
- * `OAuthController` — tam status musiał przetrwać zewnętrzny redirect z Allegro
- * (adres nie był z góry znany jako „ten sam ekran"); tu cel przekierowania to
- * zawsze ten sam, znany z góry ekran edycji TEGO produktu, więc nie ma powodu
- * kodować stanu w URL-u.
+ * Komunikat po akcji: wraca bezpośrednio w odpowiedzi JSON (jak przy tytule) —
+ * transient komunikatu z ery `admin-post.php` (potrzebny, żeby przetrwać
+ * przekierowanie po pełnym przeładowaniu) jest USUNIĘTY wraz z P-17.1, AJAX nie
+ * przeładowuje strony.
  *
  * Prompt AI (P-13.6b, D-13.G4): metabox zyskał też sekcję promptu (przed
  * przyciskiem „Generuj") — nadpisanie per produkt ({@see PromptOverrideField::render_field()},
@@ -81,17 +71,17 @@ final class GenerationMetaBox {
 	private const META_BOX_ID = 'qutlet_ai_generation';
 
 	/**
-	 * Nazwa akcji `admin-post` generującej podgląd przeróbki.
+	 * Nazwa akcji `wp_ajax_*` generującej podgląd przeróbki.
 	 */
 	private const GENERATE_ACTION = 'qutlet_ai_generate_rewrite';
 
 	/**
-	 * Nazwa akcji `admin-post` akceptującej podgląd (zapis realny).
+	 * Nazwa akcji `wp_ajax_*` akceptującej podgląd (zapis realny).
 	 */
 	private const ACCEPT_ACTION = 'qutlet_ai_accept_rewrite';
 
 	/**
-	 * Nazwa akcji `admin-post` odrzucającej podgląd (bez zapisu).
+	 * Nazwa akcji `wp_ajax_*` odrzucającej podgląd (bez zapisu).
 	 */
 	private const DISCARD_ACTION = 'qutlet_ai_discard_rewrite';
 
@@ -109,27 +99,24 @@ final class GenerationMetaBox {
 	private const PENDING_TTL = 30 * MINUTE_IN_SECONDS;
 
 	/**
-	 * TTL komunikatu po akcji (transient) — jednorazowy odczyt zaraz po redirect.
+	 * Uchwyt (handle) skryptu JS obsługującego przyciski metaboxa (wzorzec
+	 * {@see TitleGenerationMetaBox::SCRIPT_HANDLE}).
 	 */
-	private const NOTICE_TTL = MINUTE_IN_SECONDS;
+	private const SCRIPT_HANDLE = 'qutlet-ai-rewrite-generator';
 
 	/**
-	 * Wpina rejestrację metaboxa i handlery akcji `admin-post`. Wołane z
-	 * bootstrapu `qutlet-ai` (na `plugins_loaded`, po sprawdzeniu twardej
+	 * Wpina rejestrację metaboxa, enqueue skryptu i handlery `wp_ajax_*` (P-17.1).
+	 * Wołane z bootstrapu `qutlet-ai` (na `plugins_loaded`, po sprawdzeniu twardej
 	 * zależności — D-G5).
 	 *
 	 * @return void
 	 */
 	public static function init(): void {
 		add_action( 'add_meta_boxes', array( self::class, 'register' ) );
-		// `admin_footer-post.php` — hook specyficzny dla EKRANU (nie post type'u);
-		// `render_footer_forms()` sam sprawdza `post_type`. Fires PO zamknięciu
-		// `<form id="post">` (patrz docblock klasy) — stąd formularze akcji tu, nie
-		// w metaboksie.
-		add_action( 'admin_footer-post.php', array( self::class, 'render_footer_forms' ) );
-		add_action( 'admin_post_' . self::GENERATE_ACTION, array( self::class, 'handle_generate' ) );
-		add_action( 'admin_post_' . self::ACCEPT_ACTION, array( self::class, 'handle_accept' ) );
-		add_action( 'admin_post_' . self::DISCARD_ACTION, array( self::class, 'handle_discard' ) );
+		add_action( 'admin_enqueue_scripts', array( self::class, 'enqueue_script' ) );
+		add_action( 'wp_ajax_' . self::GENERATE_ACTION, array( self::class, 'handle_generate' ) );
+		add_action( 'wp_ajax_' . self::ACCEPT_ACTION, array( self::class, 'handle_accept' ) );
+		add_action( 'wp_ajax_' . self::DISCARD_ACTION, array( self::class, 'handle_discard' ) );
 	}
 
 	/**
@@ -167,8 +154,56 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Renderuje metabox: komunikat po akcji, zestawienie kolumn (surowe /
-	 * przerobione / podgląd) i przycisk „Generuj".
+	 * Ładuje JS obsługi przycisków WYŁĄCZNIE na ekranie edycji produktu (wzorzec
+	 * {@see TitleGenerationMetaBox::enqueue_script()}).
+	 *
+	 * @return void
+	 */
+	public static function enqueue_script(): void {
+		$screen = get_current_screen();
+
+		if ( null === $screen || self::SCREEN !== $screen->post_type || 'post' !== $screen->base ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- tylko do zbudowania nonce'a dla TEGO produktu; autoryzację (capability + nonce) i tak wykonuje handler AJAX przy każdym żądaniu.
+		$product_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0;
+
+		if ( $product_id <= 0 ) {
+			return; // post-new.php: produkt jeszcze nie istnieje, nie ma warstwy surowej do przerobienia.
+		}
+
+		wp_enqueue_script(
+			self::SCRIPT_HANDLE,
+			plugins_url( 'assets/js/rewrite-generator.js', \Qutlet\Ai\PLUGIN_FILE ),
+			array(),
+			\Qutlet\Ai\VERSION,
+			true
+		);
+
+		wp_localize_script(
+			self::SCRIPT_HANDLE,
+			'qutletAiRewriteGenerator',
+			array(
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'generateAction' => self::GENERATE_ACTION,
+				'acceptAction'   => self::ACCEPT_ACTION,
+				'discardAction'  => self::DISCARD_ACTION,
+				'nonce'          => wp_create_nonce( self::nonce_action( $product_id ) ),
+				'productId'      => $product_id,
+				'i18n'           => array(
+					'generating'   => __( 'Generowanie…', 'qutlet-ai' ),
+					'accepting'    => __( 'Zapisywanie…', 'qutlet-ai' ),
+					'discarding'   => __( 'Odrzucanie…', 'qutlet-ai' ),
+					'genericError' => __( 'Coś poszło nie tak — spróbuj ponownie.', 'qutlet-ai' ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Renderuje metabox: pole statusu (wypełniane przez JS), zestawienie kolumn
+	 * (surowe / przerobione / podgląd) i przycisk „Generuj".
 	 *
 	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
@@ -176,7 +211,7 @@ final class GenerationMetaBox {
 	public static function render( WP_Post $post ): void {
 		$product_id = $post->ID;
 
-		self::render_notice( $product_id );
+		echo '<p data-qutlet-ai-status style="margin-top:0"></p>';
 
 		$raw_offer = get_post_meta( $product_id, RawLayerMeta::META_OFFER, true );
 		$has_raw   = is_string( $raw_offer ) && '' !== trim( $raw_offer );
@@ -194,11 +229,9 @@ final class GenerationMetaBox {
 		if ( ! $has_raw ) {
 			esc_html_e( 'Brak warstwy surowej — produkt nie pochodzi z Allegro (utworzony ręcznie) albo nie był jeszcze zsynchronizowany. Nie ma z czego wygenerować przeróbki.', 'qutlet-ai' );
 		} else {
-			self::render_action_button(
-				$product_id,
-				self::GENERATE_ACTION,
-				__( 'Generuj', 'qutlet-ai' ),
-				'button-primary'
+			printf(
+				'<button type="button" class="button button-primary" data-qutlet-ai-generate>%s</button>',
+				esc_html__( 'Generuj', 'qutlet-ai' )
 			);
 		}
 
@@ -206,46 +239,48 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Akcja „Generuj": woła generację i odkłada wynik jako podgląd (transient).
+	 * Akcja „Generuj" (AJAX): woła generację i odkłada wynik jako podgląd
+	 * (transient) — kod statusu z {@see RewriteGenerator::generate()} przez
+	 * {@see self::error_status()} (wzorzec {@see TitleGenerationMetaBox::handle_generate()}).
 	 *
 	 * @return void
 	 */
 	public static function handle_generate(): void {
-		$product_id = self::authorized_product_id( self::GENERATE_ACTION );
+		$product_id = self::authorized_product_id();
 
 		$result = RewriteGenerator::generate( $product_id );
 
 		if ( is_wp_error( $result ) ) {
-			self::set_notice( $product_id, 'error', $result->get_error_message() );
-			self::redirect_to_edit_screen( $product_id );
+			wp_send_json_error(
+				array( 'message' => $result->get_error_message() ),
+				self::error_status( $result )
+			);
 		}
 
 		set_transient( self::pending_key( $product_id ), $result, self::PENDING_TTL );
 
-		self::set_notice(
-			$product_id,
-			'success',
-			__( 'Wygenerowano podgląd przeróbki — porównaj poniżej i zaakceptuj albo odrzuć.', 'qutlet-ai' )
+		wp_send_json_success(
+			array(
+				'opis_html' => self::html_preview_markup( $result['opis'], esc_html__( 'Model zwrócił pusty opis.', 'qutlet-ai' ) ),
+				'message'   => __( 'Wygenerowano podgląd przeróbki — porównaj poniżej i zaakceptuj albo odrzuć.', 'qutlet-ai' ),
+			)
 		);
-		self::redirect_to_edit_screen( $product_id );
 	}
 
 	/**
-	 * Akcja „Zaakceptuj": zapisuje podgląd do realnych pól i czyści go.
+	 * Akcja „Zaakceptuj" (AJAX): zapisuje podgląd do realnych pól i czyści go.
 	 *
 	 * @return void
 	 */
 	public static function handle_accept(): void {
-		$product_id = self::authorized_product_id( self::ACCEPT_ACTION );
+		$product_id = self::authorized_product_id();
 		$pending    = get_transient( self::pending_key( $product_id ) );
 
 		if ( ! self::is_pending_shape( $pending ) ) {
-			self::set_notice(
-				$product_id,
-				'error',
-				__( 'Brak wygenerowanego podglądu do zaakceptowania (mógł wygasnąć) — wygeneruj ponownie.', 'qutlet-ai' )
+			wp_send_json_error(
+				array( 'message' => __( 'Brak wygenerowanego podglądu do zaakceptowania (mógł wygasnąć) — wygeneruj ponownie.', 'qutlet-ai' ) ),
+				422
 			);
-			self::redirect_to_edit_screen( $product_id );
 		}
 
 		$saved = RewriteWriter::accept( $product_id, $pending['opis'] );
@@ -254,36 +289,35 @@ final class GenerationMetaBox {
 			// Produkt zniknął między „Generuj" a „Zaakceptuj" (np. usunięty) —
 			// podgląd zostaje w transiencie (TTL i tak go w końcu wygasi), NIE
 			// pokazujemy fałszywego sukcesu.
-			self::set_notice(
-				$product_id,
-				'error',
-				__( 'Zapis nie powiódł się — produkt nie istnieje albo nie jest produktem WooCommerce.', 'qutlet-ai' )
+			wp_send_json_error(
+				array( 'message' => __( 'Zapis nie powiódł się — produkt nie istnieje albo nie jest produktem WooCommerce.', 'qutlet-ai' ) ),
+				500
 			);
-			self::redirect_to_edit_screen( $product_id );
 		}
 
 		delete_transient( self::pending_key( $product_id ) );
 
-		self::set_notice(
-			$product_id,
-			'success',
-			__( 'Przeróbka zaakceptowana i zapisana (opis).', 'qutlet-ai' )
+		wp_send_json_success(
+			array(
+				'opis_html' => self::html_preview_markup( $pending['opis'], esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) ),
+				'message'   => __( 'Przeróbka zaakceptowana i zapisana (opis).', 'qutlet-ai' ),
+			)
 		);
-		self::redirect_to_edit_screen( $product_id );
 	}
 
 	/**
-	 * Akcja „Odrzuć": czyści podgląd bez zapisu.
+	 * Akcja „Odrzuć" (AJAX): czyści podgląd bez zapisu.
 	 *
 	 * @return void
 	 */
 	public static function handle_discard(): void {
-		$product_id = self::authorized_product_id( self::DISCARD_ACTION );
+		$product_id = self::authorized_product_id();
 
 		delete_transient( self::pending_key( $product_id ) );
 
-		self::set_notice( $product_id, 'success', __( 'Podgląd odrzucony.', 'qutlet-ai' ) );
-		self::redirect_to_edit_screen( $product_id );
+		wp_send_json_success(
+			array( 'message' => __( 'Podgląd odrzucony.', 'qutlet-ai' ) )
+		);
 	}
 
 	/**
@@ -307,7 +341,7 @@ final class GenerationMetaBox {
 
 		echo '<div style="flex:1;min-width:18em">';
 		printf( '<h4>%s</h4>', esc_html__( 'Surowe (Allegro)', 'qutlet-ai' ) );
-		self::render_html_preview( $description, esc_html__( 'Brak opisu tekstowego w ofercie.', 'qutlet-ai' ) );
+		echo self::html_preview_markup( $description, esc_html__( 'Brak opisu tekstowego w ofercie.', 'qutlet-ai' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- html_preview_markup() już wp_kses_post/esc_html wewnątrz.
 		self::render_pairs_list( $specification, esc_html__( 'Brak parametrów w ofercie.', 'qutlet-ai' ) );
 		echo '</div>';
 	}
@@ -327,7 +361,9 @@ final class GenerationMetaBox {
 
 		echo '<div style="flex:1;min-width:18em">';
 		printf( '<h4>%s</h4>', esc_html__( 'Przerobione (bieżące, na stronie)', 'qutlet-ai' ) );
-		self::render_html_preview( $opis, esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) );
+		echo '<div id="qutlet-ai-current-opis">';
+		echo self::html_preview_markup( $opis, esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- html_preview_markup() już wp_kses_post/esc_html wewnątrz.
+		echo '</div>';
 		echo '</div>';
 	}
 
@@ -378,27 +414,40 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Kolumna „Wygenerowane (podgląd)" — widoczna tylko, gdy istnieje nieodrzucony
-	 * podgląd z ostatniego „Generuj". Daje przyciski „Zaakceptuj"/„Odrzuć".
+	 * Kolumna „Wygenerowane (podgląd)" — wrapper renderuje się ZAWSZE (ukryty
+	 * `display:none`, gdy brak podglądu), żeby JS mógł go pokazać/wypełnić po
+	 * udanym „Generuj" bez przeładowania strony (P-17.1). Przy renderze z
+	 * istniejącym, nieodrzuconym podglądem z ostatniego „Generuj" (np. reload w
+	 * trakcie oceny) wypełnia się od razu.
 	 *
 	 * @param int $product_id ID produktu.
 	 * @return void
 	 */
 	private static function render_pending_column( int $product_id ): void {
-		$pending = get_transient( self::pending_key( $product_id ) );
+		$pending     = get_transient( self::pending_key( $product_id ) );
+		$has_pending = self::is_pending_shape( $pending );
 
-		if ( ! self::is_pending_shape( $pending ) ) {
-			return;
-		}
-
-		echo '<div style="flex:1;min-width:18em;background:#f6f7f7;padding:.75em;border:1px solid #dcdcde">';
+		printf(
+			'<div id="qutlet-ai-pending-column" style="flex:1;min-width:18em;background:#f6f7f7;padding:.75em;border:1px solid #dcdcde%s">',
+			$has_pending ? '' : ';display:none'
+		);
 		printf( '<h4>%s</h4>', esc_html__( 'Wygenerowane (podgląd — jeszcze nie zapisane)', 'qutlet-ai' ) );
-		self::render_html_preview( $pending['opis'], esc_html__( 'Model zwrócił pusty opis.', 'qutlet-ai' ) );
 
-		echo '<p>';
-		self::render_action_button( $product_id, self::ACCEPT_ACTION, __( 'Zaakceptuj', 'qutlet-ai' ), 'button-primary' );
-		echo ' ';
-		self::render_action_button( $product_id, self::DISCARD_ACTION, __( 'Odrzuć', 'qutlet-ai' ), 'button' );
+		echo '<div id="qutlet-ai-pending-preview">';
+		if ( $has_pending ) {
+			echo self::html_preview_markup( $pending['opis'], esc_html__( 'Model zwrócił pusty opis.', 'qutlet-ai' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- html_preview_markup() już wp_kses_post/esc_html wewnątrz.
+		}
+		echo '</div>';
+
+		printf( '<p id="qutlet-ai-pending-actions"%s>', $has_pending ? '' : ' style="display:none"' );
+		printf(
+			'<button type="button" class="button button-primary" data-qutlet-ai-accept>%s</button> ',
+			esc_html__( 'Zaakceptuj', 'qutlet-ai' )
+		);
+		printf(
+			'<button type="button" class="button" data-qutlet-ai-discard>%s</button>',
+			esc_html__( 'Odrzuć', 'qutlet-ai' )
+		);
 		echo '</p>';
 		echo '</div>';
 	}
@@ -406,20 +455,21 @@ final class GenerationMetaBox {
 	/**
 	 * Renderuje HTML (opis) w przewijalnym pudełku, przez `wp_kses_post()` — ten
 	 * sam allowlist, co w `RawLayerMetaBox` (bezpieczne formatowanie przechodzi,
-	 * `<script>`/`on*` odcięte). Puste → nota o braku.
+	 * `<script>`/`on*` odcięte). Puste → nota o braku. Zwraca markup (string) —
+	 * NIE echo — żeby ten sam fragment mógł wrócić w odpowiedzi JSON AJAX-a
+	 * (P-17.1: sanityzacja HTML zawsze po stronie serwera, JS tylko wstawia
+	 * już-bezpieczny fragment).
 	 *
-	 * @param string $html    Treść HTML.
+	 * @param string $html       Treść HTML.
 	 * @param string $empty_note Nota wyświetlana, gdy treść jest pusta (już `esc_html`).
-	 * @return void
+	 * @return string
 	 */
-	private static function render_html_preview( string $html, string $empty_note ): void {
+	private static function html_preview_markup( string $html, string $empty_note ): string {
 		if ( '' === trim( $html ) ) {
-			printf( '<p><em>%s</em></p>', $empty_note ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $empty_note już esc_html w wywołaniu.
-
-			return;
+			return sprintf( '<p><em>%s</em></p>', $empty_note );
 		}
 
-		printf(
+		return sprintf(
 			'<div style="max-height:14em;overflow:auto;padding:.5em;border:1px solid #dcdcde;background:#fff;word-break:break-word;margin-bottom:.5em">%s</div>',
 			wp_kses_post( $html )
 		);
@@ -456,110 +506,6 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Renderuje przycisk akcji jako `<button type="submit" form="…">` — wiąże się
-	 * z formularzem renderowanym osobno w stopce ({@see self::render_footer_forms()})
-	 * przez HTML5 atrybut `form` (button NIE musi być potomkiem formularza, do
-	 * którego się odnosi), więc może bezpiecznie żyć wewnątrz metaboxa mimo że
-	 * właściwy `<form>` akcji jest gdzie indziej w drzewie DOM (patrz docblock
-	 * klasy — powód, dla którego formularze nie mogą być tu, w metaboksie).
-	 *
-	 * @param int    $product_id ID produktu.
-	 * @param string $action     Nazwa akcji `admin-post`.
-	 * @param string $label      Etykieta przycisku.
-	 * @param string $css_class  Klasa CSS (`button`/`button-primary`).
-	 * @return void
-	 */
-	private static function render_action_button( int $product_id, string $action, string $label, string $css_class ): void {
-		printf(
-			'<button type="submit" form="%1$s" class="button %2$s">%3$s</button>',
-			esc_attr( self::form_id( $action, $product_id ) ),
-			esc_attr( $css_class ),
-			esc_html( $label )
-		);
-	}
-
-	/**
-	 * Renderuje (na `admin_footer-post.php`, PO zamknięciu `<form id="post">") trzy
-	 * niewidoczne formularze akcji — jeden zawsze wystarczy do obsłużenia
-	 * dowolnego przycisku w metaboksie tego produktu, niezależnie od tego, które z
-	 * nich metabox akurat pokazuje (Generuj zawsze; Zaakceptuj/Odrzuć tylko gdy
-	 * jest podgląd). Nieużyty formularz jest nieszkodliwy — bez odpowiadającego
-	 * przycisku nikt go nie submituje.
-	 *
-	 * @return void
-	 */
-	public static function render_footer_forms(): void {
-		$screen = get_current_screen();
-
-		if ( null === $screen || self::SCREEN !== $screen->post_type ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- tylko do ustalenia, DLA KTÓREGO produktu wyrenderować formularze; autoryzację (capability + nonce) i tak wykonuje handler przy submicie.
-		$product_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0;
-
-		if ( $product_id <= 0 ) {
-			return;
-		}
-
-		foreach ( array( self::GENERATE_ACTION, self::ACCEPT_ACTION, self::DISCARD_ACTION ) as $action ) {
-			self::render_footer_form( $product_id, $action );
-		}
-	}
-
-	/**
-	 * Renderuje jeden niewidoczny formularz akcji (nonce związany z produktem —
-	 * wzorzec `Qutlet\Allegro\Auth\ConnectionsPage::render_disconnect_form()`).
-	 *
-	 * `wp_nonce_field()` dostaje jawną nazwę pola (`self::nonce_field_name()`),
-	 * NIE domyślną `_wpnonce` — trzy formularze w stopce renderują się obok
-	 * siebie na tej samej stronie, a strona MA JUŻ własne `#_wpnonce` z głównego
-	 * `<form id="post">` WP; bez tego trzy kolejne pola o tym samym `id` byłyby
-	 * duplikatem (nieprawidłowy HTML, nawet jeśli dziś nieszkodliwy, bo jedyny
-	 * konsument, `wp-admin/js/post.js`, i tak trafia we WŁAŚCIWE — pierwsze w
-	 * DOM — pole WP).
-	 *
-	 * @param int    $product_id ID produktu.
-	 * @param string $action     Nazwa akcji `admin-post`.
-	 * @return void
-	 */
-	private static function render_footer_form( int $product_id, string $action ): void {
-		printf(
-			'<form method="post" action="%1$s" id="%2$s" style="display:none">',
-			esc_url( admin_url( 'admin-post.php' ) ),
-			esc_attr( self::form_id( $action, $product_id ) )
-		);
-		printf( '<input type="hidden" name="action" value="%s">', esc_attr( $action ) );
-		printf( '<input type="hidden" name="product_id" value="%d">', $product_id );
-		wp_nonce_field( self::nonce_action( $action, $product_id ), self::nonce_field_name( $action ) );
-		echo '</form>';
-	}
-
-	/**
-	 * Nazwa pola nonce (`$name` w `wp_nonce_field()`/`$query_arg` w
-	 * `check_admin_referer()`) — jedna na akcję, żeby uniknąć duplikatu `id`
-	 * (patrz docblock {@see self::render_footer_form()}).
-	 *
-	 * @param string $action Nazwa akcji `admin-post`.
-	 * @return string
-	 */
-	private static function nonce_field_name( string $action ): string {
-		return '_wpnonce_' . $action;
-	}
-
-	/**
-	 * Identyfikator DOM formularza akcji — wiąże przycisk (`render_action_button()`,
-	 * atrybut `form`) z jego formularzem w stopce (`render_footer_form()`).
-	 *
-	 * @param string $action     Nazwa akcji `admin-post`.
-	 * @param int    $product_id ID produktu.
-	 * @return string
-	 */
-	private static function form_id( string $action, int $product_id ): string {
-		return 'qutlet-ai-' . $action . '-' . $product_id;
-	}
-
-	/**
 	 * Waliduje kształt wartości odczytanej z transientu podglądu (obrona przed
 	 * uszkodzonym/wygasłym wpisem).
 	 *
@@ -574,39 +520,59 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Autoryzuje żądanie akcji `admin-post`: capability na WSKAZANYM produkcie +
-	 * nonce związany z (akcja, produkt). Kończy żądanie (`wp_die`), gdy
-	 * nieautoryzowane.
+	 * Autoryzuje żądanie AJAX: capability na WSKAZANYM produkcie + nonce związany
+	 * z (metabox, produkt). Kończy żądanie (`wp_send_json_error()`, który sam
+	 * wywołuje `wp_die()`), gdy nieautoryzowane (wzorzec
+	 * {@see TitleGenerationMetaBox::authorized_product_id()}).
 	 *
-	 * Czyta `product_id` z `$_POST` — akcje idą przez prawdziwe formularze POST,
-	 * renderowane w stopce (patrz docblock klasy i {@see self::render_footer_forms()}).
-	 *
-	 * @param string $action Nazwa akcji `admin-post` (do zbudowania nazwy nonce'a).
 	 * @return int ID produktu (zawsze > 0, gdy funkcja wraca).
 	 */
-	private static function authorized_product_id( string $action ): int {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce weryfikowany niżej (check_admin_referer), po walidacji ID.
+	private static function authorized_product_id(): int {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce weryfikowany niżej (check_ajax_referer), po walidacji ID.
 		$product_id = isset( $_POST['product_id'] ) ? absint( wp_unslash( $_POST['product_id'] ) ) : 0;
 
 		if ( $product_id <= 0 || ! current_user_can( self::CAPABILITY, $product_id ) ) {
-			wp_die( esc_html__( 'Brak uprawnień do tej akcji na tym produkcie.', 'qutlet-ai' ), '', array( 'response' => 403 ) );
+			wp_send_json_error(
+				array( 'message' => __( 'Brak uprawnień do tej akcji na tym produkcie.', 'qutlet-ai' ) ),
+				403
+			);
 		}
 
-		check_admin_referer( self::nonce_action( $action, $product_id ), self::nonce_field_name( $action ) );
+		if ( ! check_ajax_referer( self::nonce_action( $product_id ), 'nonce', false ) ) {
+			wp_send_json_error(
+				array( 'message' => __( 'Nieprawidłowy token bezpieczeństwa — odśwież stronę i spróbuj ponownie.', 'qutlet-ai' ) ),
+				403
+			);
+		}
 
 		return $product_id;
 	}
 
 	/**
-	 * Nazwa akcji nonce — wiąże nonce z konkretną akcją I produktem (wzorzec
-	 * `OAuthController::connect_nonce_action()`).
+	 * Kod statusu HTTP z danych `WP_Error` (`array('status' => …)`, wzorzec
+	 * {@see RewriteGenerator::generate()}) — 500, gdy błąd nie niesie statusu
+	 * (wzorzec {@see TitleGenerationMetaBox::error_status()}).
 	 *
-	 * @param string $action     Nazwa akcji `admin-post`.
-	 * @param int    $product_id ID produktu.
+	 * @param \WP_Error $error Błąd zwrócony przez generację.
+	 * @return int
+	 */
+	private static function error_status( \WP_Error $error ): int {
+		$data = $error->get_error_data();
+
+		return ( is_array( $data ) && isset( $data['status'] ) ) ? (int) $data['status'] : 500;
+	}
+
+	/**
+	 * Nazwa akcji nonce — wiąże nonce z konkretnym produktem. Jedna wspólna dla
+	 * wszystkich trzech akcji (Generuj/Zaakceptuj/Odrzuć): wszystkie operują na
+	 * tym samym (produkt, capability), osobne nonce per akcja nie dodałoby
+	 * ochrony (wzorzec {@see TitleGenerationMetaBox::nonce_action()}).
+	 *
+	 * @param int $product_id ID produktu.
 	 * @return string
 	 */
-	private static function nonce_action( string $action, int $product_id ): string {
-		return $action . '_' . $product_id;
+	private static function nonce_action( int $product_id ): string {
+		return 'qutlet_ai_rewrite_' . $product_id;
 	}
 
 	/**
@@ -617,74 +583,5 @@ final class GenerationMetaBox {
 	 */
 	private static function pending_key( int $product_id ): string {
 		return 'qutlet_ai_pending_' . $product_id;
-	}
-
-	/**
-	 * Klucz transientu komunikatu po akcji (per produkt + użytkownik).
-	 *
-	 * @param int $product_id ID produktu.
-	 * @return string
-	 */
-	private static function notice_key( int $product_id ): string {
-		return 'qutlet_ai_notice_' . $product_id . '_' . get_current_user_id();
-	}
-
-	/**
-	 * Odkłada komunikat do wyświetlenia po przekierowaniu z powrotem na ekran edycji.
-	 *
-	 * @param int    $product_id ID produktu.
-	 * @param string $type       `success` albo `error`.
-	 * @param string $message    Treść komunikatu.
-	 * @return void
-	 */
-	private static function set_notice( int $product_id, string $type, string $message ): void {
-		set_transient(
-			self::notice_key( $product_id ),
-			array(
-				'type'    => $type,
-				'message' => $message,
-			),
-			self::NOTICE_TTL
-		);
-	}
-
-	/**
-	 * Renderuje (i konsumuje — jednorazowy odczyt) komunikat po ostatniej akcji.
-	 *
-	 * @param int $product_id ID produktu.
-	 * @return void
-	 */
-	private static function render_notice( int $product_id ): void {
-		$notice = get_transient( self::notice_key( $product_id ) );
-		delete_transient( self::notice_key( $product_id ) );
-
-		if ( ! is_array( $notice ) || ! isset( $notice['type'], $notice['message'] ) ) {
-			return;
-		}
-
-		printf(
-			'<div class="notice notice-%1$s inline"><p>%2$s</p></div>',
-			'error' === $notice['type'] ? 'error' : 'success',
-			esc_html( (string) $notice['message'] )
-		);
-	}
-
-	/**
-	 * Przekierowuje z powrotem na ekran edycji produktu. Kończy żądanie (`exit`).
-	 *
-	 * @param int $product_id ID produktu.
-	 * @return void
-	 *
-	 * @phpstan-return never
-	 */
-	private static function redirect_to_edit_screen( int $product_id ): void {
-		$url = get_edit_post_link( $product_id, 'raw' );
-
-		if ( ! is_string( $url ) || '' === $url ) {
-			$url = admin_url( 'edit.php?post_type=product' );
-		}
-
-		wp_safe_redirect( $url );
-		exit;
 	}
 }
