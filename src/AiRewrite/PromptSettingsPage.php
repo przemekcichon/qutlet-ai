@@ -21,6 +21,14 @@ namespace Qutlet\Ai\AiRewrite;
  *
  * Troski WP-owe (Settings API, capability) mieszkają WEWNĄTRZ slice'a AiRewrite —
  * bez globalnego `settings/` (vertical slice, CLAUDE.md).
+ *
+ * Sekcja „Kolejność dostawców AI" (P-18.2, D-18.5) — TA SAMA strona/grupa opcji
+ * (jedno „Zapisz zmiany"), NIE nowa strona menu i NIE pole w metaboksie produktu
+ * (D-18.2: ustawienie GLOBALNE, nie override per-produkt). Lista pokazuje
+ * WYŁĄCZNIE dostawców aktualnie skonfigurowanych ({@see ProviderPrioritySettings},
+ * D-18.6) jako numerowane selecty (kształt UI do ustalenia przy realizacji —
+ * wybrany bez JS/drag&drop, konsystentnie z resztą tej strony, która dziś nie ma
+ * żadnego skryptu).
  */
 final class PromptSettingsPage {
 
@@ -77,7 +85,9 @@ final class PromptSettingsPage {
 	}
 
 	/**
-	 * Rejestruje opcję w Settings API.
+	 * Rejestruje opcje w Settings API — TA SAMA grupa (`self::OPTION_GROUP`) dla
+	 * promptu globalnego i kolejności priorytetów dostawców (P-18.2): jeden
+	 * formularz, jedno „Zapisz zmiany" zapisuje obie opcje naraz.
 	 *
 	 * @return void
 	 */
@@ -90,6 +100,18 @@ final class PromptSettingsPage {
 				'description'       => 'Globalny prompt AI (instrukcja systemowa) dla przeróbki opisów produktów.',
 				'sanitize_callback' => array( PromptSettings::class, 'sanitize' ),
 				'default'           => '',
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
+			ProviderPrioritySettings::OPTION_NAME,
+			array(
+				'type'              => 'array',
+				'description'       => 'Kolejność priorytetów dostawców AI Client (lista ID w kolejności, D-18.G1) — runtime failover w TextGenerationService.',
+				'sanitize_callback' => array( ProviderPrioritySettings::class, 'sanitize' ),
+				'default'           => array(),
 				'show_in_rest'      => false,
 			)
 		);
@@ -150,9 +172,85 @@ final class PromptSettingsPage {
 						</td>
 					</tr>
 				</table>
+				<?php self::render_provider_priority_section(); ?>
 				<?php submit_button(); ?>
 			</form>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Sekcja „Kolejność dostawców AI" (P-18.2, D-18.5): numerowany select per
+	 * aktualnie skonfigurowany dostawca ({@see ProviderPrioritySettings::display_order()}
+	 * — D-18.6, dynamicznie z `ProviderRegistry`, nie sztywna lista w kodzie).
+	 * Brak jakiegokolwiek skonfigurowanego dostawcy → tylko komunikat, bez pól
+	 * (nic do ułożenia) — generacja i tak działa (fallback na dzisiejsze
+	 * zachowanie AI Client, {@see TextGenerationService}).
+	 *
+	 * @return void
+	 */
+	private static function render_provider_priority_section(): void {
+		$ordered = ProviderPrioritySettings::display_order();
+
+		printf( '<h2>%s</h2>', esc_html__( 'Kolejność dostawców AI', 'qutlet-ai' ) );
+		echo '<p class="description">';
+		esc_html_e(
+			'Kolejność, w jakiej „Generuj" próbuje dostawców AI: przy błędzie (limit, awaria, brak konfiguracji) system automatycznie próbuje kolejnego z listy w tym samym kliknięciu. Widoczni są wyłącznie dostawcy ze skonfigurowanym kluczem API (Ustawienia → Łączniki).',
+			'qutlet-ai'
+		);
+		echo '</p>';
+
+		if ( array() === $ordered ) {
+			printf(
+				'<p><em>%s</em></p>',
+				esc_html__( 'Brak skonfigurowanych dostawców AI (Ustawienia → Łączniki) — generacja użyje domyślnego zachowania AI Client.', 'qutlet-ai' )
+			);
+
+			return;
+		}
+
+		$count = count( $ordered );
+
+		echo '<table class="form-table" role="presentation"><tbody>';
+
+		foreach ( $ordered as $position => $provider_id ) {
+			printf( '<tr><th scope="row">%s</th><td>', esc_html( self::provider_label( $provider_id ) ) );
+			printf(
+				'<select name="%s[%s]">',
+				esc_attr( ProviderPrioritySettings::OPTION_NAME ),
+				esc_attr( $provider_id )
+			);
+
+			for ( $rank = 1; $rank <= $count; $rank++ ) {
+				printf(
+					'<option value="%1$d"%2$s>%1$d</option>',
+					$rank,
+					( $position + 1 === $rank ) ? ' selected="selected"' : ''
+				);
+			}
+
+			echo '</select></td></tr>';
+		}
+
+		echo '</tbody></table>';
+	}
+
+	/**
+	 * Etykieta dostawcy do wyświetlenia — czysto kosmetyczna mapa znanych ID
+	 * (potwierdzonych w kodzie, kontrakt §13/D-18.G1) z fallbackiem na surowe ID
+	 * dla dowolnego przyszłego dostawcy — NIE zawęża to, KTÓRZY dostawcy są
+	 * dostępni (to zostaje dynamiczne, D-18.6), wpływa tylko na podpis w UI.
+	 *
+	 * @param string $provider_id ID dostawcy.
+	 * @return string
+	 */
+	private static function provider_label( string $provider_id ): string {
+		$labels = array(
+			'google'    => 'Google',
+			'openai'    => 'OpenAI',
+			'anthropic' => 'Anthropic',
+		);
+
+		return $labels[ $provider_id ] ?? $provider_id;
 	}
 }
