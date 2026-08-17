@@ -103,11 +103,12 @@ final class RewriteGenerator {
 	 */
 	private static function response_schema(): array {
 		return array(
-			'type'       => 'object',
-			'properties' => array(
+			'type'                 => 'object',
+			'properties'           => array(
 				'opis' => array( 'type' => 'string' ),
 			),
-			'required'   => array( 'opis' ),
+			'required'             => array( 'opis' ),
+			'additionalProperties' => false,
 		);
 	}
 }

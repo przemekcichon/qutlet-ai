@@ -138,12 +138,13 @@ PROMPT;
 	 */
 	private static function response_schema(): array {
 		return array(
-			'type'       => 'object',
-			'properties' => array(
+			'type'                 => 'object',
+			'properties'           => array(
 				'tytul'    => array( 'type' => 'string' ),
 				'podnazwa' => array( 'type' => 'string' ),
 			),
-			'required'   => array( 'tytul', 'podnazwa' ),
+			'required'             => array( 'tytul', 'podnazwa' ),
+			'additionalProperties' => false,
 		);
 	}
 }
