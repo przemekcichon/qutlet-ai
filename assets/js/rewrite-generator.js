@@ -131,6 +131,11 @@
 
 		if ( textarea ) {
 			textarea.value = html;
+			// Wzorem `title-generator.js#applyResult()` — inne skrypty nasłuchujące
+			// na tym polu (np. natywny licznik słów w trybie „Kod") mają się o
+			// zmianie dowiedzieć, nie tylko odczytać nową wartość przy submicie.
+			textarea.dispatchEvent( new Event( 'input', { bubbles: true } ) );
+			textarea.dispatchEvent( new Event( 'change', { bubbles: true } ) );
 		}
 
 		if ( window.tinymce && 'function' === typeof window.tinymce.get ) {

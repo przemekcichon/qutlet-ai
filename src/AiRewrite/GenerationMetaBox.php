@@ -308,8 +308,12 @@ final class GenerationMetaBox {
 		delete_transient( self::pending_key( $product_id ) );
 
 		// Ten sam allowlist, którym {@see RewriteWriter::accept()} sanityzuje
-		// PRZED zapisem — odpowiedź niesie DOKŁADNIE to, co wylądowało w
-		// `post_content`, nie surowy (niesanityzowany) `$pending['opis']`.
+		// PRZED zapisem — odpowiedź niesie to, co POWINNO odpowiadać
+		// `post_content` (nie surowy, niesanityzowany `$pending['opis']`), z
+		// zastrzeżeniem, że `wp_update_post()` przepuszcza `post_content`
+		// dodatkowo przez `content_save_pre` (`convert_invalid_entities`,
+		// `balanceTags`) — przy niezbalansowanym HTML-u z modelu wynik może się
+		// SUBTELNIE różnić od bajtów faktycznie zapisanych w bazie.
 		$opis_saved = wp_kses_post( $pending['opis'] );
 
 		wp_send_json_success(
