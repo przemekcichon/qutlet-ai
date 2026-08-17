@@ -148,7 +148,11 @@ final class ProviderPrioritySettings {
 
 		foreach ( $value as $provider_id => $rank ) {
 			if ( is_string( $provider_id ) && '' !== $provider_id ) {
-				$entries[] = array( $index++, is_numeric( $rank ) ? (int) $rank : 0, $provider_id );
+				// Ranga nienumeryczna (spreparowany/uszkodzony POST — renderowany UI emituje
+				// wyłącznie numeryczne <option>) → PHP_INT_MAX, żeby taki dostawca wylądował
+				// na KOŃCU (najniższy priorytet), nie na szczycie listy. `0` byłby tu błędem:
+				// w porządku rosnącym wygrywa NAJMNIEJSZĄ wartość, więc trafiłby na czoło.
+				$entries[] = array( $index++, is_numeric( $rank ) ? (int) $rank : PHP_INT_MAX, $provider_id );
 			}
 		}
 

@@ -102,7 +102,7 @@ final class ProviderPrioritySettingsTest extends TestCase {
 			)
 		);
 
-		$this->assertSame( array( 'google', 'openai' ), $result );
+		$this->assertSame( array( 'openai', 'google' ), $result, 'Nienumeryczna/spreparowana ranga ma zepchnąć dostawcę na KONIEC listy, nie wynieść go na szczyt.' );
 	}
 
 	public function test_sanitize_ignores_non_array_value(): void {
