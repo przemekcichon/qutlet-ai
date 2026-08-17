@@ -7,10 +7,20 @@
  * „Generuj" tylko odkłada podgląd w transiencie, nic nieodwracalnego się nie
  * dzieje, więc żadny z trzech przycisków nie potrzebuje potwierdzenia.
  *
- * Wszystkie fragmenty HTML w odpowiedziach (`opis_html`) są już sanityzowane
- * po stronie serwera (`wp_kses_post()`, {@see GenerationMetaBox::html_preview_markup()})
- * — ten skrypt tylko wstawia je przez `innerHTML`, nie buduje HTML-a z danych
- * z odpowiedzi samodzielnie.
+ * Wszystkie fragmenty HTML w odpowiedziach (`opis_html`, `opis`) są już
+ * sanityzowane po stronie serwera (`wp_kses_post()`, ten sam przebieg co
+ * {@see \Qutlet\Ai\AiRewrite\RewriteWriter::accept()} PRZED zapisem) — ten
+ * skrypt tylko wstawia je przez `innerHTML`/edytor, nie buduje HTML-a z
+ * danych z odpowiedzi samodzielnie.
+ *
+ * Po „Zaakceptuj" wstawiamy zapisany opis też do natywnego edytora treści
+ * (`#content`, klasyczny edytor/TinyMCE — produkty mają Gutenberg wyłączony
+ * przez WooCommerce) — bez tego edytor zostaje ze STARĄ wartością sprzed
+ * AJAX-owego zapisu, a kolejne kliknięcie natywnego „Aktualizuj" (albo krok
+ * kreatora, `qutlet-core\ProductReviewWizard`) nadpisuje `post_content` z
+ * powrotem tą starą wartością — dokładnie ten problem, który
+ * `title-generator.js` rozwiązuje dla `#title`/`podnazwa` (patrz jego
+ * docblock).
  */
 ( function () {
 	var config = window.qutletAiRewriteGenerator;
@@ -107,7 +117,34 @@
 			current.innerHTML = data.opis_html;
 		}
 
+		if ( 'string' === typeof data.opis ) {
+			setContentField( data.opis );
+		}
+
 		hidePendingColumn();
+	}
+
+	// Odświeża natywny edytor treści (`#content`) po udanym „Zaakceptuj" —
+	// wzorem `title-generator.js` dla `#title`/`podnazwa`, patrz docblock pliku.
+	function setContentField( html ) {
+		var textarea = document.getElementById( 'content' );
+
+		if ( textarea ) {
+			textarea.value = html;
+			// Wzorem `title-generator.js#applyResult()` — inne skrypty nasłuchujące
+			// na tym polu (np. natywny licznik słów w trybie „Kod") mają się o
+			// zmianie dowiedzieć, nie tylko odczytać nową wartość przy submicie.
+			textarea.dispatchEvent( new Event( 'input', { bubbles: true } ) );
+			textarea.dispatchEvent( new Event( 'change', { bubbles: true } ) );
+		}
+
+		if ( window.tinymce && 'function' === typeof window.tinymce.get ) {
+			var editor = window.tinymce.get( 'content' );
+
+			if ( editor ) {
+				editor.setContent( html );
+			}
+		}
 	}
 
 	function onDiscardSuccess() {
