@@ -270,6 +270,16 @@ final class GenerationMetaBox {
 	/**
 	 * Akcja „Zaakceptuj" (AJAX): zapisuje podgląd do realnych pól i czyści go.
 	 *
+	 * Odpowiedź niesie też SUROWY (posanityzowany) opis (`opis`), nie tylko
+	 * gotowy podgląd HTML (`opis_html`) — bez tego natywny edytor treści
+	 * (`#content`, TinyMCE) zostaje ze STARĄ wartością sprzed AJAX-owego
+	 * zapisu, a kolejne kliknięcie natywnego „Aktualizuj" (albo kroku
+	 * kreatora, {@see \Qutlet\Core\ProductReviewWizard\ProductReviewWizard})
+	 * nadpisuje `post_content` z powrotem tą starą wartością — dokładnie ten
+	 * sam problem, który {@see TitleGenerationMetaBox} rozwiązuje dla
+	 * `#title`/`podnazwa` (patrz jego docblock). JS
+	 * (`assets/js/rewrite-generator.js`) wstawia `opis` do edytora.
+	 *
 	 * @return void
 	 */
 	public static function handle_accept(): void {
@@ -297,9 +307,15 @@ final class GenerationMetaBox {
 
 		delete_transient( self::pending_key( $product_id ) );
 
+		// Ten sam allowlist, którym {@see RewriteWriter::accept()} sanityzuje
+		// PRZED zapisem — odpowiedź niesie DOKŁADNIE to, co wylądowało w
+		// `post_content`, nie surowy (niesanityzowany) `$pending['opis']`.
+		$opis_saved = wp_kses_post( $pending['opis'] );
+
 		wp_send_json_success(
 			array(
-				'opis_html' => self::html_preview_markup( $pending['opis'], esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) ),
+				'opis'      => $opis_saved,
+				'opis_html' => self::html_preview_markup( $opis_saved, esc_html__( 'Brak opisu — jeszcze nie wygenerowano/zredagowano.', 'qutlet-ai' ) ),
 				'message'   => __( 'Przeróbka zaakceptowana i zapisana (opis).', 'qutlet-ai' ),
 			)
 		);
