@@ -14,13 +14,14 @@ use Qutlet\Core\ProductInfo\RewrittenFields;
 use WP_Post;
 
 /**
- * Metabox w bocznej kolumnie ekranu edycji produktu — scalony punkt edycji
- * nazwy produktu (P-20.4b, D-20.3): natywny tytuł wpisu (`#titlediv`,
- * przeniesiony tu fizycznie przez JS, {@see self::enqueue_script()}), „Druga
- * linia nazwy produktu" ({@see RewrittenFields::render_field()}, `qutlet-core`),
- * oryginalna nazwa Allegro (verbatim — jedyne miejsce w adminie, gdzie jest
- * dziś widoczna, patrz niżej) i dwa przyciski, „Generuj" i „Reset", oba
- * wołające AJAX.
+ * Metabox tuż pod tytułem ekranu edycji produktu (kontekst `acf_after_title`,
+ * pełna szerokość głównej kolumny — patrz {@see self::register()}) —
+ * scalony punkt edycji nazwy produktu (P-20.4b, D-20.3): natywny tytuł wpisu
+ * (`#titlediv`, przeniesiony tu fizycznie przez JS,
+ * {@see self::enqueue_script()}), „Druga linia nazwy produktu"
+ * ({@see RewrittenFields::render_field()}, `qutlet-core`), oryginalna nazwa
+ * Allegro (verbatim — jedyne miejsce w adminie, gdzie jest dziś widoczna,
+ * patrz niżej) i dwa przyciski, „Generuj" i „Reset", oba wołające AJAX.
  *
  * Świadoma niekonsystencja z {@see GenerationMetaBox} (opis) — D-13.G2. Obie
  * klasy są dziś `wp_ajax_*` (P-17.1 przeniosło też opis na AJAX) — różnica NIE
@@ -94,9 +95,16 @@ final class TitleGenerationMetaBox {
 	}
 
 	/**
-	 * Rejestruje metabox tylko dla ekranu edycji produktu, w bocznej kolumnie
-	 * (obok „Opublikuj"/kategorii) — kompaktowe narzędzie: nazwa + dwa przyciski,
-	 * nie zestawienie porównawcze jak {@see GenerationMetaBox}.
+	 * Rejestruje metabox tylko dla ekranu edycji produktu, w kontekście
+	 * `acf_after_title` — ACF Pro renderuje tam boxy TUŻ POD tytułem/
+	 * odnośnikiem, PEŁNEJ szerokości głównej kolumny (`form-post.php::
+	 * edit_form_after_title()`, `do_meta_boxes( …, 'acf_after_title', … )`).
+	 * Zastępuje wcześniejsze `side` (wąska kolumna) — po scaleniu z
+	 * `#titlediv` (P-20.4b) box niesie zbyt dużo treści (tytuł, druga linia
+	 * nazwy, przyciski) na wąski `side` box; ten kontekst jest już twardą
+	 * zależnością tego repo (ACF Pro, D-G5), więc nie dokłada nowego ryzyka.
+	 * Box jest dziś JEDYNYM konsumentem tego kontekstu w projekcie (grep:
+	 * żadna grupa ACF core/ai nie rejestruje `position => 'acf_after_title'`).
 	 *
 	 * @param string $post_type Typ posta bieżącego ekranu edycji.
 	 * @return void
@@ -111,7 +119,7 @@ final class TitleGenerationMetaBox {
 			__( 'Nazwa produktu (AI)', 'qutlet-ai' ),
 			array( self::class, 'render' ),
 			self::SCREEN,
-			'side',
+			'acf_after_title',
 			'default'
 		);
 	}

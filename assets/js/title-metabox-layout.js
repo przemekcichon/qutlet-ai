@@ -5,30 +5,33 @@
  * strony, TRWALE (bez logiki przywracania, w odróżnieniu od
  * `product-review-wizard.js`, który przenosi węzły tylko na czas otwarcia
  * kreatora). `name="post_title"` zapisuje się wprost do kolumny bazy, więc
- * przeniesienie węzła nie wymaga żadnej zmiany zapisu (D-20.3).
+ * przeniesienie węzła nie wymaga żadnej zmiany zapisu (D-20.3). Box żyje w
+ * kontekście `acf_after_title` ({@see \Qutlet\Ai\AiRewrite\TitleGenerationMetaBox::register()})
+ * — PEŁNA szerokość głównej kolumny, ta sama co natywne miejsce `#titlediv`,
+ * więc jego font-size zostaje bez zmian (w odróżnieniu od wcześniejszej
+ * wersji tej zmiany, gdy box żył w wąskim `side`).
  *
- * `#title` w rdzeniu WP ma font-size dobrany pod PEŁNĄ szerokość kolumny
- * głównej (`edit-form-advanced.php`) — wewnątrz wąskiego bocznego metaboksa
- * dłuższe nazwy produktów się nie mieszczą (zweryfikowane wizualnie przy
- * realizacji P-20.4b). Zmniejszamy inline, bez osobnego pliku CSS — ten sam
- * styl co reszta tego metaboksa (inline `style` w PHP), tylko dociągnięty tu,
- * bo `#title` to węzeł rdzenia WP, nie nasz markup.
+ * ACF Pro doklada do KAŻDEGO boxa w tym kontekście własny margines
+ * (`#post-body-content #acf_after_title-sortables{margin:20px 0 -20px}`,
+ * `acf-input.css`) — myślany pod pola ACF „przyklejone" do tytułu. Dla
+ * naszego (dużo wyższego) boxa ujemny dół zjada margines pod nim (zero
+ * odstępu do kolejnego metaboxa), a dodatkowy góra sumuje się z marginesem
+ * przycisku „Otwórz kreator" (zbyt duży odstęp nad boxem, zweryfikowane
+ * wizualnie przy realizacji P-20.4b). Box jest dziś JEDYNYM konsumentem tego
+ * kontekstu w projekcie (patrz docblock `register()`), więc nadpisanie tego
+ * marginesu inline jest bezpieczne — nie dotyka żadnego innego elementu.
  */
 ( function () {
 	var anchor = document.querySelector( '[data-qutlet-ai-titlediv-anchor]' );
 	var titlediv = document.getElementById( 'titlediv' );
 
-	if ( ! anchor || ! titlediv ) {
-		return;
+	if ( anchor && titlediv ) {
+		anchor.appendChild( titlediv );
 	}
 
-	anchor.appendChild( titlediv );
+	var container = document.getElementById( 'acf_after_title-sortables' );
 
-	var titleInput = document.getElementById( 'title' );
-
-	if ( titleInput ) {
-		titleInput.style.fontSize = '14px';
-		titleInput.style.height = 'auto';
-		titleInput.style.padding = '6px 8px';
+	if ( container ) {
+		container.style.margin = '0 0 20px';
 	}
 } )();
