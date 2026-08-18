@@ -126,12 +126,17 @@ final class TitleGenerationMetaBox {
 
 	/**
 	 * Renderuje scalony metabox nazwy produktu (P-20.4b, D-20.3), w tej
-	 * kolejności: status (wypełniane przez JS) → kotwica na `#titlediv`
-	 * (pusty `<div>` — {@see self::enqueue_script()} przenosi tam natywny
-	 * tytuł/odnośnik przy starcie strony) → „Druga linia nazwy produktu"
-	 * ({@see RewrittenFields::render_field()}, `qutlet-core`) → [gdy brak
-	 * warstwy surowej: komunikat, koniec] → banner „Nowy" (gdy stale) →
-	 * oryginalna nazwa Allegro (read-only) → przyciski „Generuj"/„Reset".
+	 * kolejności: status (wypełniane przez JS) → etykieta „Pierwsza linia
+	 * nazwy produktu" (markup ACF-owej etykiety pola — {@see self::render()}
+	 * nie jest polem ACF, ale wizualnie ma pasować do „Druga linia nazwy
+	 * produktu" niżej) → kotwica na `#titlediv` (pusty `<div>` —
+	 * {@see self::enqueue_script()} przenosi tam natywny tytuł przy starcie
+	 * strony; odnośnik bezpośredni wypina spod tytułu POD CAŁY box) → „Druga
+	 * linia nazwy produktu" ({@see RewrittenFields::render_field()},
+	 * `qutlet-core`) → [gdy brak warstwy surowej: komunikat, koniec] →
+	 * banner „Nowy" (gdy stale) → oryginalna nazwa Allegro (read-only) →
+	 * przyciski „Generuj"/„Reset". Odnośnik bezpośredni (`#edit-slug-box`)
+	 * ląduje POD tym wszystkim — {@see self::enqueue_script()}.
 	 *
 	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
@@ -140,6 +145,10 @@ final class TitleGenerationMetaBox {
 		$raw_name = (string) get_post_meta( $post->ID, RawLayerMeta::META_NAME_RAW, true );
 
 		echo '<p data-qutlet-ai-title-status style="margin-top:0"></p>';
+		printf(
+			'<div class="acf-label"><label>%s</label></div>',
+			esc_html__( 'Pierwsza linia nazwy produktu', 'qutlet-ai' )
+		);
 		echo '<div data-qutlet-ai-titlediv-anchor></div>';
 
 		RewrittenFields::render_field( $post->ID );

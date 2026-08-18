@@ -11,6 +11,12 @@
  * więc jego font-size zostaje bez zmian (w odróżnieniu od wcześniejszej
  * wersji tej zmiany, gdy box żył w wąskim `side`).
  *
+ * Edytor bezpośredniego odnośnika (`#edit-slug-box`, dziecko `#titlediv
+ * .inside`) wypina się z tytułu i ląduje POD CAŁYM boxem — wewnątrz tego
+ * samego skraca się na środku formularza z polem „Druga linia nazwy
+ * produktu"/przyciskami, więc czytelniej jest go trzymać osobno, tak jak w
+ * natywnym WP (odnośnik POD tytułem, nie zagnieżdżony między innymi polami).
+ *
  * ACF Pro doklada do KAŻDEGO boxa w tym kontekście własny margines
  * (`#post-body-content #acf_after_title-sortables{margin:20px 0 -20px}`,
  * `acf-input.css`) — myślany pod pola ACF „przyklejone" do tytułu. Dla
@@ -24,9 +30,21 @@
 ( function () {
 	var anchor = document.querySelector( '[data-qutlet-ai-titlediv-anchor]' );
 	var titlediv = document.getElementById( 'titlediv' );
+	var editSlugBox = document.getElementById( 'edit-slug-box' );
+	var postbox = document.getElementById( 'qutlet_ai_title_generator' );
+
+	if ( editSlugBox && postbox && postbox.parentNode ) {
+		postbox.parentNode.insertBefore( editSlugBox, postbox.nextSibling );
+	}
 
 	if ( anchor && titlediv ) {
 		anchor.appendChild( titlediv );
+
+		var insideBox = titlediv.querySelector( '.inside' );
+
+		if ( insideBox ) {
+			insideBox.remove(); // Pusty po wypięciu #edit-slug-box wyżej — zostawiony, zajmowałby martwe miejsce (padding bez treści).
+		}
 	}
 
 	var container = document.getElementById( 'acf_after_title-sortables' );
