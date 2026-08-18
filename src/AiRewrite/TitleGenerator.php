@@ -31,10 +31,20 @@ use Qutlet\Core\ProductInfo\RawLayerMeta;
 final class TitleGenerator {
 
 	/**
-	 * Instrukcja systemowa dla modelu — stała, nieedytowalna w adminie (patrz
-	 * docblock klasy).
+	 * Nazwa opcji globalnego promptu nazwy — kontrakt §13 (VERBATIM, D-20.G1,
+	 * FAZA 20/P-20.1).
 	 */
-	private const SYSTEM_INSTRUCTION = <<<'PROMPT'
+	public const OPTION_NAME = 'qutlet_ai_prompt_title_global';
+
+	/**
+	 * Instrukcja systemowa dla modelu — DOMYŚLNA wartość opcji {@see OPTION_NAME}
+	 * (D-20.1: dopóki administrator nie zapisze pola „Globalny prompt nazwy
+	 * produktu" na {@see PromptSettingsPage}, generacja zachowuje się identycznie
+	 * jak przed FAZĄ 20). `public` od FAZY 20 (wcześniej `private`), żeby
+	 * `PromptSettingsPage` mogła się do niej odwołać jako `default` bez
+	 * duplikowania tekstu jako osobny literał.
+	 */
+	public const SYSTEM_INSTRUCTION = <<<'PROMPT'
 Jesteś asystentem redagującym tytuły produktów w sklepie internetowym Qutlet
 (elektronika outletowa). Dostajesz oryginalną nazwę oferty z Allegro — często
 zapisaną KAPITALIKAMI, z fragmentami niezwiązanymi z samym produktem.
@@ -74,10 +84,13 @@ PROMPT;
 			);
 		}
 
+		$system_instruction = get_option( self::OPTION_NAME, self::SYSTEM_INSTRUCTION );
+		$system_instruction = is_string( $system_instruction ) ? $system_instruction : self::SYSTEM_INSTRUCTION;
+
 		$response = TextGenerationService::generate_json(
 			$raw_name,
 			self::response_schema(),
-			self::SYSTEM_INSTRUCTION
+			$system_instruction
 		);
 
 		if ( is_wp_error( $response ) ) {
