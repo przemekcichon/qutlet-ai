@@ -1,6 +1,6 @@
 <?php
 /**
- * Slice AiRewrite — strona ustawień globalnego promptu AI (P-7.2b).
+ * Slice AiRewrite — strona ustawień promptów globalnych AI (P-7.2b, P-20.1).
  *
  * @package Qutlet\Ai
  */
@@ -10,14 +10,17 @@ declare( strict_types=1 );
 namespace Qutlet\Ai\AiRewrite;
 
 /**
- * Strona ustawień globalnego promptu AI (D-7.G4): podmenu pod menu WooCommerce,
- * jedno pole textarea zapisywane przez Settings API do opcji
- * `qutlet_ai_prompt_global` (kontrakt §13, D-7.2b.1).
+ * Strona „Prompty globalne" (D-20.2, dawniej „Qutlet — prompt AI"): podmenu
+ * pod menu WooCommerce, pola textarea zapisywane przez Settings API do opcji
+ * `qutlet_ai_prompt_global` (opis produktu, kontrakt §13, D-7.2b.1) oraz
+ * `qutlet_ai_prompt_title_global` (nazwa produktu, kontrakt §13, D-20.G1,
+ * FAZA 20/P-20.1).
  *
  * Wzorzec 1:1 z `Qutlet\Core\Pricing\DiscountRateSettingsPage` — ustawienia
  * sklepowe Qutlet mieszkają pod jednym menu (WooCommerce), niezależnie od tego,
- * który plugin je rejestruje. Prompt jest wprowadzany ręcznie przez administratora
- * i czytany przy generacji (P-7.3) przez {@see PromptSettings::effective_prompt()}.
+ * który plugin je rejestruje. Prompty są wprowadzane ręcznie przez administratora
+ * i czytane przy generacji przez {@see PromptSettings::effective_prompt()}
+ * (opis, P-7.3) oraz {@see TitleGenerator::generate()} (nazwa, D-20.1).
  *
  * Troski WP-owe (Settings API, capability) mieszkają WEWNĄTRZ slice'a AiRewrite —
  * bez globalnego `settings/` (vertical slice, CLAUDE.md).
@@ -76,8 +79,8 @@ final class PromptSettingsPage {
 	public static function register_menu(): void {
 		add_submenu_page(
 			'woocommerce',
-			__( 'Qutlet — prompt AI', 'qutlet-ai' ),
-			__( 'Qutlet — prompt AI', 'qutlet-ai' ),
+			__( 'Prompty globalne', 'qutlet-ai' ),
+			__( 'Prompty globalne', 'qutlet-ai' ),
 			self::CAPABILITY,
 			self::PAGE_SLUG,
 			array( self::class, 'render_page' )
@@ -106,6 +109,18 @@ final class PromptSettingsPage {
 
 		register_setting(
 			self::OPTION_GROUP,
+			TitleGenerator::OPTION_NAME,
+			array(
+				'type'              => 'string',
+				'description'       => 'Globalny prompt AI (instrukcja systemowa) dla generowania nazwy produktu (FAZA 20, D-20.1) — całkowicie zastępuje domyślne reguły algorytmiczne.',
+				'sanitize_callback' => array( PromptSettings::class, 'sanitize' ),
+				'default'           => TitleGenerator::SYSTEM_INSTRUCTION,
+				'show_in_rest'      => false,
+			)
+		);
+
+		register_setting(
+			self::OPTION_GROUP,
 			ProviderPrioritySettings::OPTION_NAME,
 			array(
 				'type'              => 'array',
@@ -127,7 +142,8 @@ final class PromptSettingsPage {
 	}
 
 	/**
-	 * Renderuje stronę ustawień: jedno pole textarea + opis mechanizmu nadpisania.
+	 * Renderuje stronę ustawień: pole promptu opisu (+ opis mechanizmu
+	 * nadpisania) i pole promptu nazwy produktu (P-20.1, bez nadpisania).
 	 *
 	 * @return void
 	 */
@@ -136,11 +152,13 @@ final class PromptSettingsPage {
 			return;
 		}
 
-		$value = get_option( PromptSettings::OPTION_NAME, '' );
-		$value = is_string( $value ) ? $value : '';
+		$value       = get_option( PromptSettings::OPTION_NAME, '' );
+		$value       = is_string( $value ) ? $value : '';
+		$title_value = get_option( TitleGenerator::OPTION_NAME, TitleGenerator::SYSTEM_INSTRUCTION );
+		$title_value = is_string( $title_value ) ? $title_value : TitleGenerator::SYSTEM_INSTRUCTION;
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Qutlet — prompt AI', 'qutlet-ai' ); ?></h1>
+			<h1><?php esc_html_e( 'Prompty globalne', 'qutlet-ai' ); ?></h1>
 			<p>
 				<?php
 				esc_html_e(
@@ -155,7 +173,7 @@ final class PromptSettingsPage {
 					<tr>
 						<th scope="row">
 							<label for="<?php echo esc_attr( PromptSettings::OPTION_NAME ); ?>">
-								<?php esc_html_e( 'Globalny prompt AI', 'qutlet-ai' ); ?>
+								<?php esc_html_e( 'Globalny prompt opisu produktu', 'qutlet-ai' ); ?>
 							</label>
 						</th>
 						<td>
@@ -168,6 +186,25 @@ final class PromptSettingsPage {
 							><?php echo esc_textarea( $value ); ?></textarea>
 							<p class="description">
 								<?php esc_html_e( 'Puste = brak instrukcji systemowej (generacja bez promptu, dopóki nie ustawisz tego pola albo nadpisania na produkcie).', 'qutlet-ai' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">
+							<label for="<?php echo esc_attr( TitleGenerator::OPTION_NAME ); ?>">
+								<?php esc_html_e( 'Globalny prompt nazwy produktu', 'qutlet-ai' ); ?>
+							</label>
+						</th>
+						<td>
+							<textarea
+								id="<?php echo esc_attr( TitleGenerator::OPTION_NAME ); ?>"
+								name="<?php echo esc_attr( TitleGenerator::OPTION_NAME ); ?>"
+								rows="8"
+								cols="60"
+								class="large-text"
+							><?php echo esc_textarea( $title_value ); ?></textarea>
+							<p class="description">
+								<?php esc_html_e( 'Zastępuje w całości domyślne, algorytmiczne reguły generowania nazwy produktu (bez nadpisania per produkt). Domyślnie pole zawiera dzisiejszy tekst tych reguł jako gotowy punkt startowy do edycji.', 'qutlet-ai' ); ?>
 							</p>
 						</td>
 					</tr>
