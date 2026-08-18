@@ -126,10 +126,8 @@ final class TitleGenerationMetaBox {
 
 	/**
 	 * Renderuje scalony metabox nazwy produktu (P-20.4b, D-20.3), w tej
-	 * kolejności: status (wypełniane przez JS) → etykieta „Pierwsza linia
-	 * nazwy produktu" (markup ACF-owej etykiety pola — {@see self::render()}
-	 * nie jest polem ACF, ale wizualnie ma pasować do „Druga linia nazwy
-	 * produktu" niżej) → kotwica na `#titlediv` (pusty `<div>` —
+	 * kolejności: status (wypełniane przez JS) → etykieta+opis „Pierwsza
+	 * linia nazwy produktu" → kotwica na `#titlediv` (pusty `<div>` —
 	 * {@see self::enqueue_script()} przenosi tam natywny tytuł przy starcie
 	 * strony; odnośnik bezpośredni wypina spod tytułu POD CAŁY box) → „Druga
 	 * linia nazwy produktu" ({@see RewrittenFields::render_field()},
@@ -138,6 +136,19 @@ final class TitleGenerationMetaBox {
 	 * przyciski „Generuj"/„Reset". Odnośnik bezpośredni (`#edit-slug-box`)
 	 * ląduje POD tym wszystkim — {@see self::enqueue_script()}.
 	 *
+	 * Etykieta „Pierwsza linia..." NIE jest polem ACF (to natywny `#titlediv`,
+	 * nie ACF), ale ma wizualnie pasować do etykiety „Druga linia nazwy
+	 * produktu" tuż pod nią ({@see RewrittenFields}). Podpięcie się pod klasy
+	 * ACF (`acf-label`) okazało się kruche — kaskada ACF różnicuje wagę
+	 * czcionki/marginesy w zależności od tego, czy etykieta jest wewnątrz
+	 * `.acf-field` (kontekstów jest w `acf-input.css` kilkanaście, część
+	 * nadpisuje bazowe `font-weight:500` na `normal` dla innych typów pól) —
+	 * zweryfikowane wizualnie przy realizacji P-20.4b: nasza etykieta
+	 * wychodziła jaśniejsza i bez marginesu, mimo tych samych klas. Zamiast
+	 * gonić tę kaskadę, wartości (font-weight, kolor, marginesy) są
+	 * przepisane WPROST z wyrenderowanego pola „Druga linia..." (inline
+	 * `style`) — stabilne niezależnie od wersji ACF.
+	 *
 	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
 	 */
@@ -145,11 +156,14 @@ final class TitleGenerationMetaBox {
 		$raw_name = (string) get_post_meta( $post->ID, RawLayerMeta::META_NAME_RAW, true );
 
 		echo '<p data-qutlet-ai-title-status style="margin-top:0"></p>';
+		echo '<div style="margin:15px 0">';
 		printf(
-			'<div class="acf-label"><label>%s</label></div>',
-			esc_html__( 'Pierwsza linia nazwy produktu', 'qutlet-ai' )
+			'<div style="margin:0 0 10px"><label style="display:block;font-weight:500;font-size:13px;margin:0 0 3px;color:#3c434a">%1$s</label><p class="description" style="display:block;margin:6px 0 0;font-size:13px;color:#667085">%2$s</p></div>',
+			esc_html__( 'Pierwsza linia nazwy produktu', 'qutlet-ai' ),
+			esc_html__( 'Pierwsza (główna) linia nazwy produktu — zapisywana jako tytuł wpisu (post_title). Redagowalna ręcznie; sync z Allegro jej NIE nadpisuje po utworzeniu produktu. Widoczna na stronie zawsze, nawet gdy „Druga linia nazwy produktu" jest pusta.', 'qutlet-ai' )
 		);
 		echo '<div data-qutlet-ai-titlediv-anchor></div>';
+		echo '</div>';
 
 		RewrittenFields::render_field( $post->ID );
 
