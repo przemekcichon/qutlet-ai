@@ -145,7 +145,7 @@ final class GenerationMetaBox {
 
 		add_meta_box(
 			self::META_BOX_ID,
-			__( 'Qutlet — generacja AI (przeróbka)', 'qutlet-ai' ),
+			__( 'Generacja AI (przeróbka)', 'qutlet-ai' ),
 			array( self::class, 'render' ),
 			self::SCREEN,
 			'normal',
@@ -213,6 +213,8 @@ final class GenerationMetaBox {
 
 		echo '<p data-qutlet-ai-status style="margin-top:0"></p>';
 
+		self::render_content_editor_section( $post );
+
 		$raw_offer = get_post_meta( $product_id, RawLayerMeta::META_OFFER, true );
 		$has_raw   = is_string( $raw_offer ) && '' !== trim( $raw_offer );
 
@@ -236,6 +238,52 @@ final class GenerationMetaBox {
 		}
 
 		echo '</p>';
+	}
+
+	/**
+	 * Natywny edytor treści (`post_content`) — PIERWSZA sekcja scalonego
+	 * metaboksu (D-20.6, D-20.G4). `qutlet-core` zdejmuje wsparcie edytora dla
+	 * CPT `product` ({@see \Qutlet\Core\AiRewrite\ContentEditorSupport}) —
+	 * natywny box „Opis produktu" (`#postdivrich`) przestaje się renderować
+	 * osobno na ekranie; render `wp_editor()` przenosi się tutaj. Zapis
+	 * (`$_POST['content']` → `post_content`, `_wp_translate_postdata()`) i JS
+	 * synchronizacji po „Zaakceptuj" ({@see \Qutlet\Ai\AiRewrite\RewriteGenerator},
+	 * `rewrite-generator.js::setContentField()`) celują w pole PO ID
+	 * (`content`), więc działają bez zmian niezależnie od miejsca renderu.
+	 *
+	 * Opcje skopiowane z dzisiejszego wywołania w rdzeniu WP
+	 * (`wp-admin/edit-form-advanced.php`) — `drag_drop_upload`, `editor_height`
+	 * oraz `tinymce.resize`/`tinymce.add_unload_trigger` (niezależne od
+	 * poniższego wyjątku, więc przeniesione bez zmian: `resize:false` gasi
+	 * natywny uchwyt do ręcznego rozciągania edytora, `add_unload_trigger:false`
+	 * gasi WEWNĘTRZNY mechanizm TinyMCE ostrzegający o niezapisanych zmianach —
+	 * rdzeń WP ma własny, osobny mechanizm tego ostrzeżenia, więc bez tej opcji
+	 * ostrzeżenie dublowałoby się przy próbie opuszczenia strony).
+	 * Z WYJĄTKIEM opcji „distraction free writing"
+	 * (`_content_editor_dfw`/`tinymce.wp_autoresize_on`/skrypt
+	 * `editor-expand`): ten mechanizm jest myślany pod pełnoszerokościowy
+	 * `#postdivrich`, nie pod wąski metabox, i tak czy inaczej przestaje się
+	 * ładować dla `product` po zdjęciu wsparcia edytora (blok w rdzeniu, który
+	 * go enqueue'uje, jest bramkowany tą samą flagą).
+	 *
+	 * @param WP_Post $post Bieżący produkt.
+	 * @return void
+	 */
+	private static function render_content_editor_section( WP_Post $post ): void {
+		printf( '<h4 style="margin-top:0">%s</h4>', esc_html__( 'Opis produktu', 'qutlet-ai' ) );
+
+		wp_editor(
+			$post->post_content,
+			'content',
+			array(
+				'drag_drop_upload' => true,
+				'editor_height'    => 300,
+				'tinymce'          => array(
+					'resize'             => false,
+					'add_unload_trigger' => false,
+				),
+			)
+		);
 	}
 
 	/**
@@ -341,28 +389,22 @@ final class GenerationMetaBox {
 	}
 
 	/**
-	 * Kolumna „Surowe" — opis prozą i specyfikacja z warstwy surowej (Allegro).
-	 * Pełny JSON oferty pokazuje osobno `RawLayerMetaBox` (core, P-5.3) — tu tylko
-	 * te dwa pola: opis wchodzi do porównania z wygenerowaną przeróbką (kolumny
-	 * niżej), specyfikacja zostaje jako kontekst wejścia AI (ten sam surowy JSON
-	 * karmi generację opisu) mimo że od P-13.4b/D-13.G1 nie ma już z czym jej
-	 * porównać — atrybuty WC tłumaczy 1:1 sync Allegro, nie ten flow.
+	 * Kolumna „Surowe" — opis prozą z warstwy surowej (Allegro). Pełny JSON
+	 * oferty pokazuje osobno `RawLayerMetaBox` (core, P-5.3). Lista
+	 * atrybutów/parametrów spod tego nagłówka USUNIĘTA (D-20.5, zgłoszenie
+	 * FAZY 20 pkt 8) — był to znany relikt sprzed P-13.4b/D-13.G1: od tamtej
+	 * fazy specyfikacja nie ma już z czym się tu porównywać (atrybuty WC
+	 * tłumaczy 1:1 sync Allegro, nie ten flow), a lista niosła tylko szum.
 	 *
 	 * @param int $product_id ID produktu.
 	 * @return void
 	 */
 	private static function render_raw_column( int $product_id ): void {
-		$description   = (string) get_post_meta( $product_id, RawLayerMeta::META_DESCRIPTION_RAW, true );
-		$specification = get_post_meta( $product_id, RawLayerMeta::META_SPECIFICATION_RAW, true );
-
-		if ( ! is_array( $specification ) ) {
-			$specification = array();
-		}
+		$description = (string) get_post_meta( $product_id, RawLayerMeta::META_DESCRIPTION_RAW, true );
 
 		echo '<div style="flex:1;min-width:18em">';
 		printf( '<h4>%s</h4>', esc_html__( 'Surowe (Allegro)', 'qutlet-ai' ) );
 		echo self::html_preview_markup( $description, esc_html__( 'Brak opisu tekstowego w ofercie.', 'qutlet-ai' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- html_preview_markup() już wp_kses_post/esc_html wewnątrz.
-		self::render_pairs_list( $specification, esc_html__( 'Brak parametrów w ofercie.', 'qutlet-ai' ) );
 		echo '</div>';
 	}
 
@@ -493,36 +535,6 @@ final class GenerationMetaBox {
 			'<div style="max-height:14em;overflow:auto;padding:.5em;border:1px solid #dcdcde;background:#fff;word-break:break-word;margin-bottom:.5em">%s</div>',
 			wp_kses_post( $html )
 		);
-	}
-
-	/**
-	 * Renderuje listę par etykieta→wartość jako prostą listę definicyjną. Puste →
-	 * nota o braku. Jedyny dziś konsument to {@see self::render_raw_column()}
-	 * (surowa specyfikacja Allegro) — od P-13.4b/D-13.G1 atrybuty WC nie są już
-	 * generowane przez AI, więc nie ma ich (ani ich podglądu) tu do wyrenderowania.
-	 *
-	 * @param array<int, array{etykieta?: mixed, wartosc?: mixed}> $pairs      Lista par.
-	 * @param string                                               $empty_note Nota wyświetlana, gdy lista jest pusta (już `esc_html`).
-	 * @return void
-	 */
-	private static function render_pairs_list( array $pairs, string $empty_note ): void {
-		if ( array() === $pairs ) {
-			printf( '<p><em>%s</em></p>', $empty_note ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $empty_note już esc_html w wywołaniu.
-
-			return;
-		}
-
-		echo '<dl style="margin:0">';
-
-		foreach ( $pairs as $pair ) {
-			$label = isset( $pair['etykieta'] ) ? (string) $pair['etykieta'] : '';
-			$value = isset( $pair['wartosc'] ) ? (string) $pair['wartosc'] : '';
-
-			printf( '<dt style="font-weight:600">%s</dt>', esc_html( $label ) );
-			printf( '<dd style="margin:0 0 .5em 0">%s</dd>', esc_html( $value ) );
-		}
-
-		echo '</dl>';
 	}
 
 	/**
