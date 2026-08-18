@@ -252,8 +252,15 @@ final class GenerationMetaBox {
 	 * (`content`), więc działają bez zmian niezależnie od miejsca renderu.
 	 *
 	 * Opcje skopiowane z dzisiejszego wywołania w rdzeniu WP
-	 * (`wp-admin/edit-form-advanced.php`) — Z WYJĄTKIEM opcji „distraction free
-	 * writing" (`_content_editor_dfw`/`wp_autoresize_on`/skrypt
+	 * (`wp-admin/edit-form-advanced.php`) — `drag_drop_upload`, `editor_height`
+	 * oraz `tinymce.resize`/`tinymce.add_unload_trigger` (niezależne od
+	 * poniższego wyjątku, więc przeniesione bez zmian: `resize:false` gasi
+	 * natywny uchwyt do ręcznego rozciągania edytora, `add_unload_trigger:false`
+	 * gasi WEWNĘTRZNY mechanizm TinyMCE ostrzegający o niezapisanych zmianach —
+	 * rdzeń WP ma własny, osobny mechanizm tego ostrzeżenia, więc bez tej opcji
+	 * ostrzeżenie dublowałoby się przy próbie opuszczenia strony).
+	 * Z WYJĄTKIEM opcji „distraction free writing"
+	 * (`_content_editor_dfw`/`tinymce.wp_autoresize_on`/skrypt
 	 * `editor-expand`): ten mechanizm jest myślany pod pełnoszerokościowy
 	 * `#postdivrich`, nie pod wąski metabox, i tak czy inaczej przestaje się
 	 * ładować dla `product` po zdjęciu wsparcia edytora (blok w rdzeniu, który
@@ -271,6 +278,10 @@ final class GenerationMetaBox {
 			array(
 				'drag_drop_upload' => true,
 				'editor_height'    => 300,
+				'tinymce'          => array(
+					'resize'             => false,
+					'add_unload_trigger' => false,
+				),
 			)
 		);
 	}
