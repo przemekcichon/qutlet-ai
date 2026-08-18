@@ -145,7 +145,7 @@ final class GenerationMetaBox {
 
 		add_meta_box(
 			self::META_BOX_ID,
-			__( 'Qutlet — generacja AI (przeróbka)', 'qutlet-ai' ),
+			__( 'Generacja AI (przeróbka)', 'qutlet-ai' ),
 			array( self::class, 'render' ),
 			self::SCREEN,
 			'normal',
@@ -213,6 +213,8 @@ final class GenerationMetaBox {
 
 		echo '<p data-qutlet-ai-status style="margin-top:0"></p>';
 
+		self::render_content_editor_section( $post );
+
 		$raw_offer = get_post_meta( $product_id, RawLayerMeta::META_OFFER, true );
 		$has_raw   = is_string( $raw_offer ) && '' !== trim( $raw_offer );
 
@@ -236,6 +238,41 @@ final class GenerationMetaBox {
 		}
 
 		echo '</p>';
+	}
+
+	/**
+	 * Natywny edytor treści (`post_content`) — PIERWSZA sekcja scalonego
+	 * metaboksu (D-20.6, D-20.G4). `qutlet-core` zdejmuje wsparcie edytora dla
+	 * CPT `product` ({@see \Qutlet\Core\AiRewrite\ContentEditorSupport}) —
+	 * natywny box „Opis produktu" (`#postdivrich`) przestaje się renderować
+	 * osobno na ekranie; render `wp_editor()` przenosi się tutaj. Zapis
+	 * (`$_POST['content']` → `post_content`, `_wp_translate_postdata()`) i JS
+	 * synchronizacji po „Zaakceptuj" ({@see \Qutlet\Ai\AiRewrite\RewriteGenerator},
+	 * `rewrite-generator.js::setContentField()`) celują w pole PO ID
+	 * (`content`), więc działają bez zmian niezależnie od miejsca renderu.
+	 *
+	 * Opcje skopiowane z dzisiejszego wywołania w rdzeniu WP
+	 * (`wp-admin/edit-form-advanced.php`) — Z WYJĄTKIEM opcji „distraction free
+	 * writing" (`_content_editor_dfw`/`wp_autoresize_on`/skrypt
+	 * `editor-expand`): ten mechanizm jest myślany pod pełnoszerokościowy
+	 * `#postdivrich`, nie pod wąski metabox, i tak czy inaczej przestaje się
+	 * ładować dla `product` po zdjęciu wsparcia edytora (blok w rdzeniu, który
+	 * go enqueue'uje, jest bramkowany tą samą flagą).
+	 *
+	 * @param WP_Post $post Bieżący produkt.
+	 * @return void
+	 */
+	private static function render_content_editor_section( WP_Post $post ): void {
+		printf( '<h4 style="margin-top:0">%s</h4>', esc_html__( 'Opis produktu', 'qutlet-ai' ) );
+
+		wp_editor(
+			$post->post_content,
+			'content',
+			array(
+				'drag_drop_upload' => true,
+				'editor_height'    => 300,
+			)
+		);
 	}
 
 	/**
