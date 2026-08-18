@@ -1,16 +1,18 @@
 /**
- * Qutlet AI — generator tytułu/podnazwy produktu (metabox „Qutlet — nazwa
- * produktu (AI)", P-13.2c). Zapis jest BEZPOŚREDNI: „Generuj"/„Reset" od razu
+ * Qutlet AI — generator tytułu/podnazwy produktu (metabox „Nazwa produktu
+ * (AI)", P-13.2c). Zapis jest BEZPOŚREDNI: „Generuj"/„Reset" od razu
  * piszą do bazy (wp_ajax_qutlet_ai_generate_title / wp_ajax_qutlet_ai_reset_title)
  * — bez etapu podglądu/akceptacji jak przy generatorze opisu. Ten skrypt tylko
  * odświeża pola na ekranie (natywny #title i pole ACF „podnazwa") po udanym
  * zapisie, żeby kolejne kliknięcie natywnego „Aktualizuj" nie nadpisało ich z
  * powrotem starą wartością wciąż siedzącą w formularzu.
  *
- * `window.confirm()` przed każdym żądaniem — zabezpieczenie zastępcze za brak
+ * `window.confirm()` przed żądaniem „Reset" — zabezpieczenie zastępcze za brak
  * `admin-post.php` (D-13.G2): ten mechanizm (w odróżnieniu od generatora opisu)
  * jest AJAX-em, więc nic nie chroni przed przypadkowym/prefetchowanym
- * kliknięciem poza jawnym potwierdzeniem tutaj.
+ * kliknięciem poza jawnym potwierdzeniem tutaj. „Generuj" NIE potwierdza od
+ * P-20.4b (D-20.4) — `runAction()` pomija `window.confirm()`, gdy
+ * `confirmMessage` jest puste/`null`.
  */
 ( function () {
 	var config = window.qutletAiTitleGenerator;
@@ -23,7 +25,7 @@
 		var generateBtn = e.target.closest( '[data-qutlet-ai-title-generate]' );
 
 		if ( generateBtn ) {
-			runAction( generateBtn, config.generateAction, config.i18n.confirmGenerate, config.i18n.generating );
+			runAction( generateBtn, config.generateAction, null, config.i18n.generating );
 
 			return;
 		}
@@ -36,7 +38,7 @@
 	} );
 
 	function runAction( button, action, confirmMessage, busyLabel ) {
-		if ( ! window.confirm( confirmMessage ) ) {
+		if ( confirmMessage && ! window.confirm( confirmMessage ) ) {
 			return;
 		}
 

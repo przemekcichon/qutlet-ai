@@ -19,7 +19,7 @@ do_action( 'qutlet_product_title_generated', int $product_id, string $tytul, str
 
 W `Qutlet\Ai\AiRewrite\TitleWriter::accept()` — PO udanym zapisie
 `post_title` + `podnazwa`. `accept()` jest wspólną ścieżką zapisu dla OBU
-akcji metaboxa „Qutlet — nazwa produktu (AI)”:
+akcji metaboxa „Nazwa produktu (AI)”:
 
 - **Generuj** (`TitleGenerationMetaBox::handle_generate()`) — `$tytul`/`$podnazwa`
   pochodzą z generacji AI (`TitleGenerator::generate()`).

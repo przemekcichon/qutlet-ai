@@ -10,12 +10,18 @@ declare( strict_types=1 );
 namespace Qutlet\Ai\AiRewrite;
 
 use Qutlet\Core\ProductInfo\RawLayerMeta;
+use Qutlet\Core\ProductInfo\RewrittenFields;
 use WP_Post;
 
 /**
- * Metabox w bocznej kolumnie ekranu edycji produktu: pokazuje oryginalną nazwę
- * Allegro (verbatim — jedyne miejsce w adminie, gdzie jest dziś widoczna, patrz
- * niżej) i dwa przyciski, „Generuj" i „Reset", oba wołające AJAX.
+ * Metabox tuż pod tytułem ekranu edycji produktu (kontekst `acf_after_title`,
+ * pełna szerokość głównej kolumny — patrz {@see self::register()}) —
+ * scalony punkt edycji nazwy produktu (P-20.4b, D-20.3): natywny tytuł wpisu
+ * (`#titlediv`, przeniesiony tu fizycznie przez JS,
+ * {@see self::enqueue_script()}), „Druga linia nazwy produktu"
+ * ({@see RewrittenFields::render_field()}, `qutlet-core`), oryginalna nazwa
+ * Allegro (verbatim — jedyne miejsce w adminie, gdzie jest dziś widoczna,
+ * patrz niżej) i dwa przyciski, „Generuj" i „Reset", oba wołające AJAX.
  *
  * Świadoma niekonsystencja z {@see GenerationMetaBox} (opis) — D-13.G2. Obie
  * klasy są dziś `wp_ajax_*` (P-17.1 przeniosło też opis na AJAX) — różnica NIE
@@ -25,7 +31,8 @@ use WP_Post;
  * osobny krok akceptacji byłby zbędny), tam trójstopniowy podgląd→akceptuj/
  * odrzuć. Zabezpieczenie zastępcze za brak kroku akceptacji: `window.confirm()`
  * w JS PRZED wysłaniem żądania — patrz `assets/js/title-generator.js` — plus
- * nonce + capability w handlerze.
+ * nonce + capability w handlerze. Od P-20.4b (D-20.4) potwierdzenie zostaje
+ * WYŁĄCZNIE dla „Reset" — „Generuj" wysyła żądanie od razu.
  *
  * Domyka też lukę zasygnalizowaną przy P-5.3 (`RawLayerMetaBox`, `qutlet-core`):
  * ten panel powstał PRZED P-13.2 i nie pokazuje nazwy — `RawLayerMeta::META_NAME_RAW`
@@ -67,6 +74,13 @@ final class TitleGenerationMetaBox {
 	private const SCRIPT_HANDLE = 'qutlet-ai-title-generator';
 
 	/**
+	 * Uchwyt (handle) skryptu JS przenoszącego `#titlediv` do wnętrza metaboxa
+	 * (P-20.4b, D-20.3) — osobny plik/handle od {@see self::SCRIPT_HANDLE},
+	 * bez zależności na config AJAX-a (nonce/productId).
+	 */
+	private const TITLEDIV_SCRIPT_HANDLE = 'qutlet-ai-title-metabox-layout';
+
+	/**
 	 * Wpina rejestrację metaboxa, enqueue skryptu i handlery AJAX. Wołane z
 	 * bootstrapu `qutlet-ai` (na `plugins_loaded`, po sprawdzeniu twardej
 	 * zależności — D-G5).
@@ -81,9 +95,16 @@ final class TitleGenerationMetaBox {
 	}
 
 	/**
-	 * Rejestruje metabox tylko dla ekranu edycji produktu, w bocznej kolumnie
-	 * (obok „Opublikuj"/kategorii) — kompaktowe narzędzie: nazwa + dwa przyciski,
-	 * nie zestawienie porównawcze jak {@see GenerationMetaBox}.
+	 * Rejestruje metabox tylko dla ekranu edycji produktu, w kontekście
+	 * `acf_after_title` — ACF Pro renderuje tam boxy TUŻ POD tytułem/
+	 * odnośnikiem, PEŁNEJ szerokości głównej kolumny (`form-post.php::
+	 * edit_form_after_title()`, `do_meta_boxes( …, 'acf_after_title', … )`).
+	 * Zastępuje wcześniejsze `side` (wąska kolumna) — po scaleniu z
+	 * `#titlediv` (P-20.4b) box niesie zbyt dużo treści (tytuł, druga linia
+	 * nazwy, przyciski) na wąski `side` box; ten kontekst jest już twardą
+	 * zależnością tego repo (ACF Pro, D-G5), więc nie dokłada nowego ryzyka.
+	 * Box jest dziś JEDYNYM konsumentem tego kontekstu w projekcie (grep:
+	 * żadna grupa ACF core/ai nie rejestruje `position => 'acf_after_title'`).
 	 *
 	 * @param string $post_type Typ posta bieżącego ekranu edycji.
 	 * @return void
@@ -95,17 +116,38 @@ final class TitleGenerationMetaBox {
 
 		add_meta_box(
 			self::META_BOX_ID,
-			__( 'Qutlet — nazwa produktu (AI)', 'qutlet-ai' ),
+			__( 'Nazwa produktu (AI)', 'qutlet-ai' ),
 			array( self::class, 'render' ),
 			self::SCREEN,
-			'side',
+			'acf_after_title',
 			'default'
 		);
 	}
 
 	/**
-	 * Renderuje metabox: oryginalna nazwa Allegro (read-only), przyciski
-	 * „Generuj"/„Reset" i pole na komunikat statusu (wypełniane przez JS).
+	 * Renderuje scalony metabox nazwy produktu (P-20.4b, D-20.3), w tej
+	 * kolejności: status (wypełniane przez JS) → etykieta+opis „Pierwsza
+	 * linia nazwy produktu" → kotwica na `#titlediv` (pusty `<div>` —
+	 * {@see self::enqueue_script()} przenosi tam natywny tytuł przy starcie
+	 * strony; odnośnik bezpośredni wypina spod tytułu POD CAŁY box) → „Druga
+	 * linia nazwy produktu" ({@see RewrittenFields::render_field()},
+	 * `qutlet-core`) → [gdy brak warstwy surowej: komunikat, koniec] →
+	 * banner „Nowy" (gdy stale) → oryginalna nazwa Allegro (read-only) →
+	 * przyciski „Generuj"/„Reset". Odnośnik bezpośredni (`#edit-slug-box`)
+	 * ląduje POD tym wszystkim — {@see self::enqueue_script()}.
+	 *
+	 * Etykieta „Pierwsza linia..." NIE jest polem ACF (to natywny `#titlediv`,
+	 * nie ACF), ale ma wizualnie pasować do etykiety „Druga linia nazwy
+	 * produktu" tuż pod nią ({@see RewrittenFields}). Podpięcie się pod klasy
+	 * ACF (`acf-label`) okazało się kruche — kaskada ACF różnicuje wagę
+	 * czcionki/marginesy w zależności od tego, czy etykieta jest wewnątrz
+	 * `.acf-field` (kontekstów jest w `acf-input.css` kilkanaście, część
+	 * nadpisuje bazowe `font-weight:500` na `normal` dla innych typów pól) —
+	 * zweryfikowane wizualnie przy realizacji P-20.4b: nasza etykieta
+	 * wychodziła jaśniejsza i bez marginesu, mimo tych samych klas. Zamiast
+	 * gonić tę kaskadę, wartości (font-weight, kolor, marginesy) są
+	 * przepisane WPROST z wyrenderowanego pola „Druga linia..." (inline
+	 * `style`) — stabilne niezależnie od wersji ACF.
 	 *
 	 * @param WP_Post $post Bieżący produkt.
 	 * @return void
@@ -114,6 +156,16 @@ final class TitleGenerationMetaBox {
 		$raw_name = (string) get_post_meta( $post->ID, RawLayerMeta::META_NAME_RAW, true );
 
 		echo '<p data-qutlet-ai-title-status style="margin-top:0"></p>';
+		echo '<div style="margin:15px 0">';
+		printf(
+			'<div style="margin:0 0 10px"><label style="display:block;font-weight:500;font-size:13px;margin:0 0 3px;color:#3c434a">%1$s</label><p class="description" style="display:block;margin:6px 0 0;font-size:13px;color:#667085">%2$s</p></div>',
+			esc_html__( 'Pierwsza linia nazwy produktu', 'qutlet-ai' ),
+			esc_html__( 'Pierwsza (główna) linia nazwy produktu — zapisywana jako tytuł wpisu (post_title). Redagowalna ręcznie; sync z Allegro jej NIE nadpisuje po utworzeniu produktu. Widoczna na stronie zawsze, nawet gdy „Druga linia nazwy produktu" jest pusta.', 'qutlet-ai' )
+		);
+		echo '<div data-qutlet-ai-titlediv-anchor></div>';
+		echo '</div>';
+
+		RewrittenFields::render_field( $post->ID );
 
 		if ( '' === trim( $raw_name ) ) {
 			printf(
@@ -153,8 +205,13 @@ final class TitleGenerationMetaBox {
 	}
 
 	/**
-	 * Ładuje JS obsługi przycisków WYŁĄCZNIE na ekranie edycji produktu (nie na
-	 * liście produktów ani innych ekranach admina).
+	 * Ładuje JS obsługi WYŁĄCZNIE na ekranie edycji produktu (nie na liście
+	 * produktów ani innych ekranach admina). Dwa niezależne skrypty:
+	 * przeniesienie `#titlediv` ({@see self::TITLEDIV_SCRIPT_HANDLE}) ładuje
+	 * się ZAWSZE na tym ekranie (też `post-new.php` — box renderuje kotwicę i
+	 * {@see RewrittenFields::render_field()} niezależnie od istnienia warstwy
+	 * surowej, patrz {@see self::render()}); generator AJAX
+	 * ({@see self::SCRIPT_HANDLE}) wymaga istniejącego produktu (nonce/ID).
 	 *
 	 * @return void
 	 */
@@ -164,6 +221,14 @@ final class TitleGenerationMetaBox {
 		if ( null === $screen || self::SCREEN !== $screen->post_type || 'post' !== $screen->base ) {
 			return;
 		}
+
+		wp_enqueue_script(
+			self::TITLEDIV_SCRIPT_HANDLE,
+			plugins_url( 'assets/js/title-metabox-layout.js', \Qutlet\Ai\PLUGIN_FILE ),
+			array(),
+			\Qutlet\Ai\VERSION,
+			true
+		);
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- tylko do zbudowania nonce'a dla TEGO produktu; autoryzację (capability + nonce) i tak wykonuje handler AJAX przy każdym żądaniu.
 		$product_id = isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0;
@@ -190,11 +255,10 @@ final class TitleGenerationMetaBox {
 				'nonce'          => wp_create_nonce( self::nonce_action( $product_id ) ),
 				'productId'      => $product_id,
 				'i18n'           => array(
-					'confirmGenerate' => __( 'Wygenerować tytuł i podnazwę przez AI? To NADPISZE bieżącą nazwę produktu.', 'qutlet-ai' ),
-					'confirmReset'    => __( 'Przywrócić oryginalną nazwę Allegro? To NADPISZE bieżący tytuł i wyczyści podnazwę.', 'qutlet-ai' ),
-					'generating'      => __( 'Generowanie…', 'qutlet-ai' ),
-					'resetting'       => __( 'Przywracanie…', 'qutlet-ai' ),
-					'genericError'    => __( 'Coś poszło nie tak — spróbuj ponownie.', 'qutlet-ai' ),
+					'confirmReset' => __( 'Przywrócić oryginalną nazwę Allegro? To NADPISZE bieżący tytuł i wyczyści podnazwę.', 'qutlet-ai' ),
+					'generating'   => __( 'Generowanie…', 'qutlet-ai' ),
+					'resetting'    => __( 'Przywracanie…', 'qutlet-ai' ),
+					'genericError' => __( 'Coś poszło nie tak — spróbuj ponownie.', 'qutlet-ai' ),
 				),
 			)
 		);
