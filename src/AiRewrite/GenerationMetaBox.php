@@ -135,6 +135,12 @@ final class GenerationMetaBox {
 	 * `remove_meta_box()`+`add_meta_box()` — mniej inwazyjne, brak ryzyka
 	 * konfliktu z przyszłym repozycjonowaniem Product Data przez WooCommerce.
 	 *
+	 * UWAGA (P-21.1b, D-21.1.1): ostateczna, PEŁNA kolejność wszystkich
+	 * metaboxów ekranu (nie tylko względem Product Data) jest dodatkowo
+	 * wymuszana w `qutlet-core` (`ProductEditorLayout\MetaBoxOrder`, seed
+	 * `meta-box-order_product`) — priorytet opisany wyżej wciąż determinuje
+	 * bucket rejestracji, ale finalny render respektuje TAKŻE tamten seed.
+	 *
 	 * @param string $post_type Typ posta bieżącego ekranu edycji.
 	 * @return void
 	 */
@@ -145,7 +151,7 @@ final class GenerationMetaBox {
 
 		add_meta_box(
 			self::META_BOX_ID,
-			__( 'Generacja AI (przeróbka)', 'qutlet-ai' ),
+			__( 'Opis produktu (AI)', 'qutlet-ai' ),
 			array( self::class, 'render' ),
 			self::SCREEN,
 			'normal',
